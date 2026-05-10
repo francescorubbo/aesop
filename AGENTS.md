@@ -20,17 +20,25 @@ Aesop is a Pi coding agent extension for distributed ML experiment orchestration
 
 ## Required Checks
 
-Before opening a PR, ensure all pass:
+Before opening a PR or pushing, ensure all CI checks pass locally:
 
 ```bash
-# Type check
-npx tsc --noEmit
+# Format check
+npm run format:check
 
 # Lint
 npm run lint
 
-# Tests
-npm test
+# Type check
+npm run typecheck
+
+# Tests with coverage
+npm run test:coverage
+```
+
+Run all checks together:
+```bash
+npx tsc --noEmit && npm run lint && npm run format:check && npm run test:coverage
 ```
 
 ## Testing

@@ -16,10 +16,7 @@ export interface IHypothesisStateManager {
     _status: 'pending' | 'success' | 'failed',
     _metrics: Record<string, number>
   ): Promise<void>;
-  mergeSuccessfulHypothesis(
-    _targetBranch: string,
-    _hypothesisBranch: string
-  ): Promise<boolean>;
+  mergeSuccessfulHypothesis(_targetBranch: string, _hypothesisBranch: string): Promise<boolean>;
 }
 
 const LEDGER_FILENAME = 'autoresearch.jsonl';
