@@ -12,7 +12,9 @@ Aesop is a Pi coding agent extension for distributed ML experiment orchestration
 
 ## Workflow
 
-1. **Create a feature branch** from `main`
+> **Important**: This workflow applies to **all changes**—code, docs, config, and even this document itself.
+
+1. **Create a feature branch** from `main` (use `git worktree add` for parallel development)
 2. **Implement and test** your changes
 3. **Run checks** before opening a PR
 4. **Open a PR** with a clear description
