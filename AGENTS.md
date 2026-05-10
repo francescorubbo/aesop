@@ -37,6 +37,7 @@ npm run test:coverage
 ```
 
 Run all checks together:
+
 ```bash
 npx tsc --noEmit && npm run lint && npm run format:check && npm run test:coverage
 ```
