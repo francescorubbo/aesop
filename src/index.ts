@@ -11,8 +11,9 @@
  * This defines the extension's identity and capabilities.
  */
 const manifest = {
-  name: "Aesop",
-  description: "Enables Pi to autonomously branch, dispatch, and evaluate distributed ML experiments",
+  name: 'Aesop',
+  description:
+    'Enables Pi to autonomously branch, dispatch, and evaluate distributed ML experiments',
   tools: [] as string[],
 };
 
