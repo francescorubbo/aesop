@@ -18,10 +18,10 @@ Aesop is a CLI application that embeds the Pi coding agent to autonomously manag
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                        Aesop CLI                            │
-│  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐ │
-│  │    CLI      │  │  Experiment  │  │  Discovery Engine   │ │
-│  │  Interface  │──│   Manager    │──│  (Slurm/K8s/Local) │ │
-│  └─────────────┘  └──────────────┘  └────────────────────┘ │
+│  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐  │
+│  │    CLI      │  │  Experiment  │  │  Discovery Engine  │  │
+│  │  Interface  │──│   Manager    │──│  (Slurm/K8s/Local) │  │
+│  └─────────────┘  └──────────────┘  └────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
