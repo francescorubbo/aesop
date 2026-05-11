@@ -117,9 +117,7 @@ export interface ControlPlaneOptions {
  * @param options - Configuration options
  * @returns Object containing the session and a stop function
  */
-export async function createAesopSession(
-  options: ControlPlaneOptions = {}
-): Promise<DaemonResult> {
+export async function createAesopSession(options: ControlPlaneOptions = {}): Promise<DaemonResult> {
   const {
     sessionManager = SessionManager.inMemory(),
     authStorage = AuthStorage.create(),
@@ -193,7 +191,11 @@ export async function dispatchExperiment(
   _options: ControlPlaneOptions = {}
 ): Promise<DispatchExperimentOutput> {
   try {
-    const { branchName, command = `python train.py --branch ${input.branchName}`, runChecks = true } = input;
+    const {
+      branchName,
+      command = `python train.py --branch ${input.branchName}`,
+      runChecks = true,
+    } = input;
     const cwd = _options.cwd ?? process.cwd();
 
     // Run backpressure gates if enabled

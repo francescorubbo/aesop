@@ -50,10 +50,7 @@ vi.mock('node:fs', () => ({
 // initialization. The dispatchExperiment and checkExperimentStatus tests
 // verify the core control plane functionality works correctly.
 
-import {
-  dispatchExperiment,
-  checkExperimentStatus,
-} from '../controlPlane';
+import { dispatchExperiment, checkExperimentStatus } from '../controlPlane';
 
 describe('controlPlane - dispatchExperiment', () => {
   beforeEach(() => {
