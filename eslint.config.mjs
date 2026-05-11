@@ -23,6 +23,13 @@ const eslintConfig = [
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
+  // CLI application files - console output IS the user interface
+  {
+    files: ['src/cli.ts', 'src/backpressureGates.ts', 'src/discoveryEngine.ts'],
+    rules: {
+      'no-console': 'off',
+    },
+  },
   eslintConfigPrettier,
 ];
 
