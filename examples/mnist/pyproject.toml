@@ -1,0 +1,13 @@
+[project]
+requires-python = ">= 3.13, <3.14"
+name = "aesop-mnist-example"
+version = "0.1.0"
+description = "Aesop MNIST example experiment"
+authors = [
+    {name = "Aesop Team", email = "team@aesop.ai"},
+]
+dependencies = [
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "numpy>=1.24.0",
+]
