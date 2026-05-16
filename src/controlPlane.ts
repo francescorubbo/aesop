@@ -30,18 +30,25 @@ import {
 export interface ProposeHypothesisInput {
   baseBranch: string;
   hypothesisName: string;
+  /** Use ephemeral workspace (default: false) */
+  ephemeral?: boolean;
 }
 
 export interface ProposeHypothesisOutput {
   success: boolean;
   branchName?: string;
+  /** Workspace path for the agent to use (only in ephemeral mode) */
+  workspacePath?: string;
   error?: string;
 }
 
 export interface DispatchExperimentInput {
+  /** Branch name or workspace path */
   branchName: string;
   command?: string;
   runChecks?: boolean;
+  /** Path to execute command in (defaults to branchName if it's a path) */
+  workingDirectory?: string;
 }
 
 export interface DispatchExperimentOutput {
@@ -79,6 +86,21 @@ export interface MergeExperimentsOutput {
   error?: string;
 }
 
+export interface InitializeWorkspaceInput {
+  /** Path to the target repository to sandbox */
+  targetRepoPath: string;
+  /** Root directory for workspaces (default: .aesop_workspaces) */
+  workspaceRoot?: string;
+}
+
+export interface InitializeWorkspaceOutput {
+  success: boolean;
+  sessionId?: string;
+  workspaceRoot?: string;
+  basePath?: string;
+  error?: string;
+}
+
 // Re-export for convenience
 export type { AgentSession as Session };
 
@@ -106,6 +128,12 @@ export interface ControlPlaneOptions {
   settingsManager?: SettingsManager;
   /** Callback for logging agent events */
   onLog?: (_message: string) => void;
+  /** Target repository path for ephemeral workspaces */
+  targetRepoPath?: string;
+  /** Workspace root for ephemeral mode */
+  workspaceRoot?: string;
+  /** Whether to use ephemeral workspaces by default */
+  useEphemeralWorkspaces?: boolean;
 }
 
 /**
@@ -153,14 +181,47 @@ export async function createAesopSession(options: ControlPlaneOptions = {}): Pro
 }
 
 /**
- * Propose a new hypothesis by creating a branch.
+ * Initialize an ephemeral workspace for hypothesis experiments.
  *
- * This tool wraps ExperimentManager.createBranch to create a new
- * experiment branch from a hypothesis.
+ * This clones the target repository into an isolated workspace directory,
+ * enabling safe parallel experimentation.
+ *
+ * @param input - Initialization parameters
+ * @param options - Control plane options
+ * @returns Result with workspace info or error
+ */
+export async function initializeEphemeralWorkspace(
+  input: InitializeWorkspaceInput,
+  options: ControlPlaneOptions = {}
+): Promise<InitializeWorkspaceOutput> {
+  try {
+    const manager = new ExperimentManager(options.cwd ?? process.cwd());
+    const workspaceInfo = await manager.initEphemeralWorkspace(
+      input.targetRepoPath,
+      input.workspaceRoot ?? '.aesop_workspaces'
+    );
+
+    return {
+      success: true,
+      sessionId: workspaceInfo.sessionId,
+      workspaceRoot: workspaceInfo.workspaceRoot,
+      basePath: workspaceInfo.basePath,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Propose a new hypothesis by creating a branch or workspace.
+ *
+ * In ephemeral mode, this creates a complete isolated workspace.
+ * In normal mode, this creates a new Git branch.
  *
  * @param input - Branch parameters
  * @param options - Control plane options
- * @returns Result with branch name or error
+ * @returns Result with branch/workspace info or error
  */
 export async function proposeHypothesis(
   input: ProposeHypothesisInput,
@@ -168,6 +229,25 @@ export async function proposeHypothesis(
 ): Promise<ProposeHypothesisOutput> {
   try {
     const manager = new ExperimentManager(options.cwd ?? process.cwd());
+
+    // Check if ephemeral mode is requested
+    const useEphemeral = input.ephemeral ?? options.useEphemeralWorkspaces ?? false;
+
+    if (useEphemeral) {
+      // Create ephemeral workspace
+      const workspacePath = await manager.createHypothesisWorkspace(
+        input.hypothesisName,
+        input.baseBranch
+      );
+
+      return {
+        success: true,
+        branchName: input.hypothesisName,
+        workspacePath,
+      };
+    }
+
+    // Create local branch
     const branchName = await manager.createBranch(input.baseBranch, input.hypothesisName);
     return { success: true, branchName };
   } catch (error) {
@@ -195,8 +275,11 @@ export async function dispatchExperiment(
       branchName,
       command = `python train.py --branch ${input.branchName}`,
       runChecks = true,
+      workingDirectory,
     } = input;
-    const cwd = _options.cwd ?? process.cwd();
+
+    // Determine working directory: use provided one, or if branchName looks like a path, use it
+    const cwd = workingDirectory ?? _options.cwd ?? process.cwd();
 
     // Run backpressure gates if enabled
     if (runChecks) {
@@ -212,7 +295,7 @@ export async function dispatchExperiment(
 
     // Submit job to active adapter
     const adapter = await getActiveAdapter();
-    const jobId = await adapter.submitJob(branchName, command);
+    const jobId = await adapter.submitJob(branchName, command, cwd);
 
     return { success: true, jobId, checksPassed: true };
   } catch (error) {
@@ -323,6 +406,15 @@ export async function startAesopDaemon(
 
   onLog('[ControlPlane] Starting Aesop daemon...');
   onLog(`[ControlPlane] Objective: ${objective}`);
+
+  if (options.targetRepoPath) {
+    onLog(`[ControlPlane] Target repo: ${options.targetRepoPath}`);
+  }
+
+  if (options.useEphemeralWorkspaces) {
+    onLog('[ControlPlane] Using ephemeral workspaces for isolation');
+  }
+
   onLog('');
 
   // Create the session
@@ -346,7 +438,7 @@ export async function startAesopDaemon(
  * Run a complete experiment workflow.
  *
  * This is a simplified helper that runs a single hypothesis test:
- * 1. Create branch
+ * 1. Create branch or workspace
  * 2. Run backpressure checks
  * 3. Submit job
  * 4. Return job ID for status checking
@@ -360,49 +452,126 @@ export async function runExperimentWorkflow(
   options: ControlPlaneOptions = {}
 ): Promise<{
   branchName?: string;
+  workspacePath?: string;
   jobId?: string;
   success: boolean;
   error?: string;
 }> {
-  // Step 1: Create branch
+  // Step 1: Create branch or workspace
+  const useEphemeral = options.useEphemeralWorkspaces ?? false;
+
   const branchResult = await proposeHypothesis(
-    { baseBranch: 'main', hypothesisName: hypothesis },
+    { baseBranch: 'main', hypothesisName: hypothesis, ephemeral: useEphemeral },
     options
   );
 
-  if (!branchResult.success || !branchResult.branchName) {
+  if (!branchResult.success) {
     return { success: false, error: branchResult.error ?? 'Failed to create branch' };
   }
 
+  const workingDir = branchResult.workspacePath ?? options.cwd ?? process.cwd();
+
   // Step 2: Run backpressure checks
-  const checkResult = await runStaticChecks(options.cwd ?? process.cwd());
+  const checkResult = await runStaticChecks(workingDir);
   if (!checkResult.success) {
-    return {
+    const result: { success: false; branchName?: string; workspacePath?: string; error: string } = {
       success: false,
-      branchName: branchResult.branchName,
       error: `Backpressure checks failed:\n${checkResult.errorOutput}`,
     };
+    if (branchResult.branchName !== undefined) result.branchName = branchResult.branchName;
+    if (branchResult.workspacePath !== undefined) result.workspacePath = branchResult.workspacePath;
+    return result;
   }
 
   // Step 3: Dispatch job
   const dispatchResult = await dispatchExperiment(
-    { branchName: branchResult.branchName, runChecks: false },
+    {
+      branchName: branchResult.branchName ?? hypothesis,
+      runChecks: false,
+      workingDirectory: workingDir,
+    },
     options
   );
 
   if (!dispatchResult.success || !dispatchResult.jobId) {
-    return {
+    const result: { success: false; branchName?: string; workspacePath?: string; error: string } = {
       success: false,
-      branchName: branchResult.branchName,
       error: dispatchResult.error ?? dispatchResult.errorOutput ?? 'Failed to dispatch',
     };
+    if (branchResult.branchName !== undefined) result.branchName = branchResult.branchName;
+    if (branchResult.workspacePath !== undefined) result.workspacePath = branchResult.workspacePath;
+    return result;
   }
 
-  return {
+  const successResult: {
+    success: true;
+    branchName?: string;
+    workspacePath?: string;
+    jobId: string;
+  } = {
     success: true,
-    branchName: branchResult.branchName,
     jobId: dispatchResult.jobId,
   };
+  if (branchResult.branchName !== undefined) successResult.branchName = branchResult.branchName;
+  if (branchResult.workspacePath !== undefined)
+    successResult.workspacePath = branchResult.workspacePath;
+  return successResult;
+}
+
+/**
+ * Run a complete ephemeral experiment workflow.
+ *
+ * This helper specifically creates an ephemeral workspace, runs the experiment,
+ * and returns the workspace path for the agent to work in.
+ *
+ * @param hypothesis - The hypothesis to test
+ * @param targetRepoPath - Path to the target repository
+ * @param options - Control plane options
+ * @returns Workflow result with workspace path
+ */
+export async function runEphemeralExperiment(
+  hypothesis: string,
+  targetRepoPath: string,
+  options: ControlPlaneOptions = {}
+): Promise<{
+  sessionId?: string;
+  workspacePath?: string;
+  basePath?: string;
+  success: boolean;
+  error?: string;
+}> {
+  try {
+    const workspaceRoot = options.workspaceRoot ?? '.aesop_workspaces';
+
+    // Initialize ephemeral workspace
+    const initResult = await initializeEphemeralWorkspace(
+      { targetRepoPath, workspaceRoot },
+      options
+    );
+
+    if (!initResult.success || !initResult.basePath) {
+      return { success: false, error: initResult.error ?? 'Failed to initialize workspace' };
+    }
+
+    // Create hypothesis workspace
+    const manager = new ExperimentManager(options.cwd ?? process.cwd());
+    await manager.initEphemeralWorkspace(targetRepoPath, workspaceRoot);
+
+    const workspacePath = await manager.createHypothesisWorkspace(hypothesis);
+
+    const result: { success: true; sessionId?: string; workspacePath: string; basePath: string } = {
+      success: true,
+      workspacePath,
+      basePath: initResult.basePath,
+    };
+    if (initResult.sessionId !== undefined) {
+      result.sessionId = initResult.sessionId;
+    }
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: message };
+  }
 }
 
 export default startAesopDaemon;

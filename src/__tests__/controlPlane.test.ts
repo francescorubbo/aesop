@@ -132,7 +132,8 @@ describe('controlPlane - dispatchExperiment', () => {
     expect(result.success).toBe(true);
     expect(mockSubmitJob).toHaveBeenCalledWith(
       'hypothesis/test',
-      expect.stringContaining('python train.py')
+      expect.stringContaining('python train.py'),
+      expect.any(String) // workingDirectory
     );
   });
 

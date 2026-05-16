@@ -9,9 +9,10 @@ export interface ExecutionAdapter {
    * Submit a job to the execution backend.
    * @param _branchName - The git branch name associated with this job
    * @param _command - The command to execute
+   * @param _workingDirectory - The working directory to execute the command in (optional)
    * @returns Promise resolving to a job ID
    */
-  submitJob(_branchName: string, _command: string): Promise<string>;
+  submitJob(_branchName: string, _command: string, _workingDirectory?: string): Promise<string>;
 
   /**
    * Check the status of a previously submitted job.
@@ -60,7 +61,11 @@ function probeAvailableBackends(): ProbeResult {
  * Adapter for SLURM workload manager.
  */
 export class SlurmAdapter implements ExecutionAdapter {
-  async submitJob(_branchName: string, _command: string): Promise<string> {
+  async submitJob(
+    _branchName: string,
+    _command: string,
+    _workingDirectory?: string
+  ): Promise<string> {
     const jobId = `slurm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     console.log(`[SlurmAdapter] Submitting job for branch: ${_branchName}`);
     console.log(`[SlurmAdapter] Command: ${_command}`);
@@ -81,7 +86,11 @@ export class SlurmAdapter implements ExecutionAdapter {
  * Adapter for Kubernetes container orchestration.
  */
 export class K8sAdapter implements ExecutionAdapter {
-  async submitJob(_branchName: string, _command: string): Promise<string> {
+  async submitJob(
+    _branchName: string,
+    _command: string,
+    _workingDirectory?: string
+  ): Promise<string> {
     const jobId = `k8s-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     console.log(`[K8sAdapter] Submitting job for branch: ${_branchName}`);
     console.log(`[K8sAdapter] Command: ${_command}`);
@@ -105,11 +114,14 @@ export class K8sAdapter implements ExecutionAdapter {
 export class LocalAdapter implements ExecutionAdapter {
   private runningProcesses: Map<string, ChildProcess> = new Map();
 
-  async submitJob(branchName: string, command: string): Promise<string> {
+  async submitJob(branchName: string, command: string, workingDirectory?: string): Promise<string> {
     const jobId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     console.log(`[LocalAdapter] Submitting job for branch: ${branchName}`);
     console.log(`[LocalAdapter] Command: ${command}`);
+    if (workingDirectory) {
+      console.log(`[LocalAdapter] Working directory: ${workingDirectory}`);
+    }
     console.log(`[LocalAdapter] Job ID: ${jobId}`);
 
     // Parse command for spawn (simple split on first space)
@@ -118,6 +130,7 @@ export class LocalAdapter implements ExecutionAdapter {
     const args = parts.slice(1);
 
     const proc = spawn(cmd, args, {
+      cwd: workingDirectory ?? process.cwd(),
       detached: true,
       stdio: 'ignore',
     }) as ChildProcess;
