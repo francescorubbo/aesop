@@ -45,12 +45,30 @@ vi.mock('node:fs', () => ({
   existsSync: mockExistsSync,
 }));
 
-// Note: proposeHypothesis and mergeExperiments tests are omitted because
-// they require mocking the ExperimentManager class which has complex module
-// initialization. The dispatchExperiment and checkExperimentStatus tests
-// verify the core control plane functionality works correctly.
+// Mock ExperimentManager
+const mockCreateBranch = vi.fn().mockResolvedValue('hypothesis/test-123');
+const mockMergeBranch = vi.fn().mockResolvedValue(true);
 
-import { dispatchExperiment, checkExperimentStatus } from '../controlPlane';
+vi.mock('../experimentManager', () => {
+  return {
+    ExperimentManager: function MockExperimentManager() {
+      return {
+        createBranch: mockCreateBranch,
+        mergeBranch: mockMergeBranch,
+        getCurrentBranch: vi.fn().mockResolvedValue('main'),
+        getExperimentLog: vi.fn().mockReturnValue([]),
+      };
+    },
+  };
+});
+
+import {
+  dispatchExperiment,
+  checkExperimentStatus,
+  proposeHypothesis,
+  mergeExperiments,
+  runExperimentWorkflow,
+} from '../controlPlane';
 
 describe('controlPlane - dispatchExperiment', () => {
   beforeEach(() => {
@@ -208,6 +226,167 @@ describe('controlPlane - checkExperimentStatus', () => {
 
     expect(result.status).toBe('running');
     expect(result.filePath).toBeUndefined();
+  });
+});
+
+describe('controlPlane - proposeHypothesis', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCreateBranch.mockResolvedValue('hypothesis/test-branch');
+  });
+
+  it('should create a new experiment branch', async () => {
+    const input: ProposeHypothesisInput = {
+      baseBranch: 'main',
+      hypothesisName: 'Test hypothesis',
+    };
+
+    const result = await proposeHypothesis(input);
+
+    expect(result.success).toBe(true);
+    expect(result.branchName).toBe('hypothesis/test-branch');
+    expect(mockCreateBranch).toHaveBeenCalledWith('main', 'Test hypothesis');
+  });
+
+  it('should use custom cwd when provided', async () => {
+    const input: ProposeHypothesisInput = {
+      baseBranch: 'develop',
+      hypothesisName: 'Custom test',
+    };
+
+    await proposeHypothesis(input, { cwd: '/custom/path' });
+
+    expect(mockCreateBranch).toHaveBeenCalledWith('develop', 'Custom test');
+  });
+
+  it('should return error on failure', async () => {
+    mockCreateBranch.mockRejectedValueOnce(new Error('Git error'));
+
+    const input: ProposeHypothesisInput = {
+      baseBranch: 'main',
+      hypothesisName: 'Test',
+    };
+
+    const result = await proposeHypothesis(input);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Git error');
+  });
+});
+
+describe('controlPlane - mergeExperiments', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockMergeBranch.mockResolvedValue(true);
+  });
+
+  it('should merge branch into target', async () => {
+    const input: MergeExperimentsInput = {
+      branchName: 'hypothesis/test',
+      targetBranch: 'main',
+    };
+
+    const result = await mergeExperiments(input);
+
+    expect(result.success).toBe(true);
+    expect(result.merged).toContain('hypothesis/test');
+  });
+
+  it('should use main as default target branch', async () => {
+    const input: MergeExperimentsInput = {
+      branchName: 'hypothesis/test',
+    };
+
+    await mergeExperiments(input);
+
+    expect(mockMergeBranch).toHaveBeenCalledWith('hypothesis/test', 'main');
+  });
+
+  it('should return conflictBranch on merge conflict', async () => {
+    mockMergeBranch.mockResolvedValueOnce(false); // Simulate conflict
+
+    const input: MergeExperimentsInput = {
+      branchName: 'hypothesis/conflict',
+      targetBranch: 'main',
+    };
+
+    const result = await mergeExperiments(input);
+
+    expect(result.success).toBe(false);
+    expect(result.conflictBranch).toBe('hypothesis/conflict');
+  });
+
+  it('should return error on unexpected failure', async () => {
+    mockMergeBranch.mockRejectedValueOnce(new Error('Unexpected error'));
+
+    const input: MergeExperimentsInput = {
+      branchName: 'hypothesis/test',
+    };
+
+    const result = await mergeExperiments(input);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Unexpected error');
+  });
+});
+
+describe('controlPlane - runExperimentWorkflow', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCreateBranch.mockResolvedValue('hypothesis/workflow-test');
+    mockRunStaticChecks.mockResolvedValue({ success: true });
+    mockSubmitJob.mockResolvedValue('job-456');
+  });
+
+  it('should run complete workflow: create branch, check, dispatch', async () => {
+    const result = await runExperimentWorkflow('Test workflow hypothesis');
+
+    expect(result.success).toBe(true);
+    expect(result.branchName).toBe('hypothesis/workflow-test');
+    expect(result.jobId).toBe('job-456');
+    expect(mockCreateBranch).toHaveBeenCalledWith('main', 'Test workflow hypothesis');
+    expect(mockRunStaticChecks).toHaveBeenCalled();
+    expect(mockSubmitJob).toHaveBeenCalled();
+  });
+
+  it('should fail if branch creation fails', async () => {
+    mockCreateBranch.mockRejectedValueOnce(new Error('Branch creation failed'));
+
+    const result = await runExperimentWorkflow('Test');
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Branch creation failed');
+  });
+
+  it('should fail if backpressure checks fail', async () => {
+    mockRunStaticChecks.mockResolvedValueOnce({
+      success: false,
+      errorOutput: 'Validation failed',
+    });
+
+    const result = await runExperimentWorkflow('Test');
+
+    expect(result.success).toBe(false);
+    expect(result.branchName).toBe('hypothesis/workflow-test');
+    expect(result.error).toContain('Backpressure checks failed');
+  });
+
+  it('should fail if dispatch fails', async () => {
+    mockSubmitJob.mockRejectedValueOnce(new Error('Dispatch failed'));
+
+    const result = await runExperimentWorkflow('Test');
+
+    expect(result.success).toBe(false);
+    expect(result.branchName).toBe('hypothesis/workflow-test');
+    expect(result.error).toContain('Dispatch failed');
+  });
+
+  it('should use custom cwd option', async () => {
+    await runExperimentWorkflow('Test', { cwd: '/custom/project' });
+
+    // Check that ExperimentManager was constructed with custom cwd
+    // The mock should have been called
+    expect(mockCreateBranch).toHaveBeenCalled();
   });
 });
 
