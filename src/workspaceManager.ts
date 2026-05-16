@@ -137,6 +137,11 @@ export class WorkspaceManager {
 
     await this.git.clone(resolvedTarget, this.basePath, options);
 
+    // Configure git identity in the cloned workspace
+    const baseGit = simpleGit(this.basePath);
+    await baseGit.addConfig('user.email', 'aesop@ephemeral.workspace', false, 'local');
+    await baseGit.addConfig('user.name', 'Aesop Ephemeral Workspace', false, 'local');
+
     console.log(`[WorkspaceManager] Base workspace initialized at ${this.basePath}`);
 
     return this.basePath;
@@ -171,6 +176,10 @@ export class WorkspaceManager {
 
     // Open the new clone and create branch
     const hypGit = simpleGit(hypothesisPath);
+
+    // Configure git identity in the hypothesis workspace
+    await hypGit.addConfig('user.email', 'aesop@ephemeral.workspace', false, 'local');
+    await hypGit.addConfig('user.name', 'Aesop Ephemeral Workspace', false, 'local');
 
     // Optionally switch to a branch
     if (options.baseBranch && options.baseBranch !== 'main') {
