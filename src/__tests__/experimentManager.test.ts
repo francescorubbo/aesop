@@ -87,8 +87,8 @@ describe('ExperimentManager', () => {
 
         const currentRepoPath = (ephemeralManager as unknown as { repoPath: string }).repoPath;
         expect(currentRepoPath).toBeDefined();
-        expect(currentRepoPath).not.toBe(hostRepoPath);
-        expect(currentRepoPath).toContain(workspaceRoot);
+        expect(currentRepoPath!).not.toBe(hostRepoPath);
+        expect(currentRepoPath!).toContain(workspaceRoot);
 
         // 2. Log an experiment
         mockGitInstance.status.mockResolvedValue({ current: 'hypothesis/ephemeral-test' });
@@ -98,7 +98,10 @@ describe('ExperimentManager', () => {
 
         // 3. Verify ledger exists in HOST path, NOT ephemeral path
         const hostLedgerPath = join(hostRepoPath, 'experiments.jsonl');
-        const ephemeralLedgerPath = join(currentRepoPath, 'experiments.jsonl');
+        const ephemeralLedgerPath = join(currentRepoPath!, 'experiments.jsonl');
+
+        expect(existsSync(hostLedgerPath)).toBe(true);
+        expect(existsSync(ephemeralLedgerPath)).toBe(false);
 
         expect(existsSync(hostLedgerPath)).toBe(true);
         expect(existsSync(ephemeralLedgerPath)).toBe(false);
