@@ -141,7 +141,7 @@ describe('ExperimentManager', () => {
 
         const log = ephemeralManager.getExperimentLog();
         expect(log).toHaveLength(1);
-        expect(log[0].branch).toBe('main');
+        expect(log[0]!.branch).toBe('main');
       } finally {
         rmSync(workspaceRoot, { recursive: true, force: true });
       }
