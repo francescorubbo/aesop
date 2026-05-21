@@ -63,7 +63,7 @@ const managerInstances: unknown[] = [];
 vi.mock('../experimentManager', () => {
   return {
     ExperimentManager: class MockExperimentManager {
-      constructor(public cwd: string) {
+      constructor(public _cwd: string) {
         managerInstancesCount++;
         managerInstances.push(this);
       }
