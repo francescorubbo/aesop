@@ -90,7 +90,7 @@ aesop interactive
 
 1. **Create a feature branch** from `main` (use `git worktree add` for parallel development)
 2. **Implement and test** your changes
-3. **Run checks** before opening a PR
+3. **Run all CI checks locally** (see "Required Checks") to ensure no regressions before pushing
 4. **Open a PR** with a clear description
 5. **Watch CI** and address any failures
 

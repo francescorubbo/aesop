@@ -18,6 +18,8 @@ const mockGitInstance = {
   diff: vi.fn().mockResolvedValue(''),
   log: vi.fn().mockResolvedValue({ all: [], latest: null }),
   reset: vi.fn().mockResolvedValue(undefined),
+  clone: vi.fn().mockResolvedValue(undefined),
+  addConfig: vi.fn().mockResolvedValue(undefined),
 };
 
 // Mock simple-git module
@@ -67,6 +69,82 @@ describe('ExperimentManager', () => {
     it('should create instance with custom path', () => {
       const m = new ExperimentManager('/custom/path');
       expect(m).toBeInstanceOf(ExperimentManager);
+    });
+  });
+
+  describe('ephemeral mode persistence', () => {
+    it('should write ledger to host repo path even when operating in ephemeral workspace', async () => {
+      const hostRepoPath = testDir;
+      const workspaceRoot = join(tmpdir(), `aesop-ws-${Date.now()}`);
+      mkdirSync(workspaceRoot, { recursive: true });
+
+      try {
+        const ephemeralManager = new ExperimentManager(hostRepoPath);
+
+        // 1. Initialize ephemeral workspace
+        // This changes manager.repoPath to point into the sandbox
+        await ephemeralManager.initEphemeralWorkspace(hostRepoPath, workspaceRoot);
+
+        const currentRepoPath = (ephemeralManager as unknown as { repoPath: string }).repoPath;
+        if (typeof currentRepoPath !== 'string') {
+          throw new Error('currentRepoPath should be a string');
+        }
+        expect(currentRepoPath).not.toBe(hostRepoPath);
+        expect(currentRepoPath).toContain(workspaceRoot);
+
+        // 2. Log an experiment
+        mockGitInstance.status.mockResolvedValue({ current: 'hypothesis/ephemeral-test' });
+        await ephemeralManager.logExperiment('hypothesis/ephemeral-test', 'success', {
+          accuracy: 0.99,
+        });
+
+        // 3. Verify ledger exists in HOST path, NOT ephemeral path
+        const hostLedgerPath = join(hostRepoPath, 'experiments.jsonl');
+        const ephemeralLedgerPath = join(currentRepoPath, 'experiments.jsonl');
+
+        expect(existsSync(hostLedgerPath)).toBe(true);
+        expect(existsSync(ephemeralLedgerPath)).toBe(false);
+
+        // 4. Verify content is correct
+
+        // 4. Verify content is correct
+        const content = readFileSync(hostLedgerPath, 'utf-8');
+        const record = JSON.parse(content.trim());
+        expect(record.branch).toBe('hypothesis/ephemeral-test');
+        expect(record.metrics.accuracy).toBe(0.99);
+      } finally {
+        rmSync(workspaceRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('should read log from host repo path even when operating in ephemeral workspace', async () => {
+      const hostRepoPath = testDir;
+      const workspaceRoot = join(tmpdir(), `aesop-ws-read-${Date.now()}`);
+      mkdirSync(workspaceRoot, { recursive: true });
+
+      try {
+        // Pre-seed host ledger
+        const hostLedgerPath = join(hostRepoPath, 'experiments.jsonl');
+        writeFileSync(
+          hostLedgerPath,
+          JSON.stringify({
+            timestamp: new Date().toISOString(),
+            branch: 'main',
+            commitHash: 'abc',
+            status: 'success',
+            metrics: {},
+          }) + '\n'
+        );
+
+        const ephemeralManager = new ExperimentManager(hostRepoPath);
+        await ephemeralManager.initEphemeralWorkspace(hostRepoPath, workspaceRoot);
+
+        const log = ephemeralManager.getExperimentLog();
+        expect(log).toHaveLength(1);
+        expect(log[0]!.branch).toBe('main');
+      } finally {
+        rmSync(workspaceRoot, { recursive: true, force: true });
+      }
     });
   });
 

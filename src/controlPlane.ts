@@ -18,6 +18,18 @@ import {
 import { ExperimentManager } from './experimentManager.js';
 import { getActiveAdapter } from './discoveryEngine.js';
 import { runStaticChecks, type StaticCheckResult } from './backpressureGates.js';
+
+// Cache for ExperimentManager instances to maintain state across tool calls
+const managerCache = new Map<string, ExperimentManager>();
+
+function getExperimentManager(cwd: string): ExperimentManager {
+  let manager = managerCache.get(cwd);
+  if (!manager) {
+    manager = new ExperimentManager(cwd);
+    managerCache.set(cwd, manager);
+  }
+  return manager;
+}
 import {
   evaluateResult,
   MergeQueue,
@@ -195,7 +207,7 @@ export async function initializeEphemeralWorkspace(
   options: ControlPlaneOptions = {}
 ): Promise<InitializeWorkspaceOutput> {
   try {
-    const manager = new ExperimentManager(options.cwd ?? process.cwd());
+    const manager = getExperimentManager(options.cwd ?? process.cwd());
     const workspaceInfo = await manager.initEphemeralWorkspace(
       input.targetRepoPath,
       input.workspaceRoot ?? '.aesop_workspaces'
@@ -228,7 +240,7 @@ export async function proposeHypothesis(
   options: ControlPlaneOptions = {}
 ): Promise<ProposeHypothesisOutput> {
   try {
-    const manager = new ExperimentManager(options.cwd ?? process.cwd());
+    const manager = getExperimentManager(options.cwd ?? process.cwd());
 
     // Check if ephemeral mode is requested
     const useEphemeral = input.ephemeral ?? options.useEphemeralWorkspaces ?? false;
@@ -360,7 +372,7 @@ export async function mergeExperiments(
 ): Promise<MergeExperimentsOutput> {
   try {
     const { branchName, targetBranch = 'main' } = input;
-    const manager = new ExperimentManager(_options.cwd ?? process.cwd());
+    const manager = getExperimentManager(_options.cwd ?? process.cwd());
 
     // Create a queue with the single branch
     const queue = new MergeQueue();
@@ -554,7 +566,7 @@ export async function runEphemeralExperiment(
     }
 
     // Create hypothesis workspace
-    const manager = new ExperimentManager(options.cwd ?? process.cwd());
+    const manager = getExperimentManager(options.cwd ?? process.cwd());
     await manager.initEphemeralWorkspace(targetRepoPath, workspaceRoot);
 
     const workspacePath = await manager.createHypothesisWorkspace(hypothesis);
