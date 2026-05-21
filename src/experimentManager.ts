@@ -51,13 +51,15 @@ const LEDGER_FILENAME = 'experiments.jsonl';
  */
 export class ExperimentManager implements IExperimentManager {
   private git: SimpleGit;
+  private hostRepoPath: string;
   private repoPath: string;
   private workspaceManager: WorkspaceManager | null = null;
   private currentWorkspacePath: string | null = null;
   private isEphemeral: boolean = false;
 
   constructor(repoPath: string = process.cwd(), options: CreateBranchOptions = {}) {
-    this.repoPath = resolve(repoPath);
+    this.hostRepoPath = resolve(repoPath);
+    this.repoPath = this.hostRepoPath;
     this.git = simpleGit(this.repoPath);
 
     if (options.ephemeral && options.workspaceRoot) {
@@ -182,7 +184,7 @@ export class ExperimentManager implements IExperimentManager {
       metrics,
     };
 
-    const ledgerPath = `${this.repoPath}/${LEDGER_FILENAME}`;
+    const ledgerPath = join(this.hostRepoPath, LEDGER_FILENAME);
     const line = JSON.stringify(record) + '\n';
 
     appendFileSync(ledgerPath, line);
@@ -229,7 +231,7 @@ export class ExperimentManager implements IExperimentManager {
    * Get all experiment records from the ledger.
    */
   getExperimentLog(): ExperimentRecord[] {
-    const ledgerPath = `${this.repoPath}/${LEDGER_FILENAME}`;
+    const ledgerPath = join(this.hostRepoPath, LEDGER_FILENAME);
 
     if (!existsSync(ledgerPath)) {
       return [];

@@ -219,14 +219,14 @@ program
     ) => {
       initAuth();
 
-      if (options.ephemeral && options.targetRepo) {
+      if (options.ephemeral) {
+        const target = options.targetRepo ?? process.cwd();
         // Run in ephemeral mode
         console.log('[CLI] Running in ephemeral workspace mode');
 
-        const runOptions: ControlPlaneOptions = {};
-        if (options.workspaceRoot) runOptions.workspaceRoot = options.workspaceRoot;
+        const runOptions: ControlPlaneOptions = { workspaceRoot: options.workspaceRoot };
 
-        const result = await runEphemeralExperiment(prompt, options.targetRepo, runOptions);
+        const result = await runEphemeralExperiment(prompt, target, runOptions);
 
         if (!result.success) {
           console.error(`[CLI] Error: ${result.error}`);
@@ -237,6 +237,9 @@ program
         console.log(`[CLI] Workspace path: ${result.workspacePath}`);
         console.log(`[CLI] Base path: ${result.basePath}`);
         console.log('[CLI] Use the workspace path above to edit files');
+      } else if (options.targetRepo) {
+        console.error('[CLI] Error: --target-repo can only be used with --ephemeral');
+        process.exit(1);
       } else {
         // Run in normal mode
         const { session } = await createAgentSession({
@@ -292,14 +295,14 @@ program
         ephemeral?: boolean;
       }
     ) => {
-      if (options.ephemeral && options.targetRepo) {
+      if (options.ephemeral) {
+        const target = options.targetRepo ?? process.cwd();
         // Create ephemeral workspace
         console.log('[CLI] Creating ephemeral workspace for hypothesis');
 
-        const runOptions: ControlPlaneOptions = {};
-        if (options.workspaceRoot) runOptions.workspaceRoot = options.workspaceRoot;
+        const runOptions: ControlPlaneOptions = { workspaceRoot: options.workspaceRoot };
 
-        const result = await runEphemeralExperiment(hypothesis, options.targetRepo, runOptions);
+        const result = await runEphemeralExperiment(hypothesis, target, runOptions);
 
         if (!result.success) {
           console.error(`[CLI] Error: ${result.error}`);
@@ -307,6 +310,9 @@ program
         }
 
         console.log(`[Aesop] Created ephemeral workspace: ${result.workspacePath}`);
+      } else if (options.targetRepo) {
+        console.error('[CLI] Error: --target-repo can only be used with --ephemeral');
+        process.exit(1);
       } else {
         // Create local branch
         const manager = new ExperimentManager(process.cwd());

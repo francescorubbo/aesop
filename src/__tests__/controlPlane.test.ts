@@ -46,18 +46,32 @@ vi.mock('node:fs', () => ({
 }));
 
 // Mock ExperimentManager
-const mockCreateBranch = vi.fn().mockResolvedValue('hypothesis/test-123');
-const mockMergeBranch = vi.fn().mockResolvedValue(true);
+const mockCreateBranch = vi.hoisted(() => vi.fn().mockResolvedValue('hypothesis/test-123'));
+const mockMergeBranch = vi.hoisted(() => vi.fn().mockResolvedValue(true));
+const mockInitEphemeralWorkspace = vi.hoisted(() => vi.fn().mockResolvedValue({
+  sessionId: 'session-123',
+  workspaceRoot: '/tmp/ws',
+  basePath: '/tmp/base',
+}));
+const mockCreateHypothesisWorkspace = vi.hoisted(() => vi.fn().mockResolvedValue('/tmp/ws/hyp-1'));
+
+let managerInstancesCount = 0;
+const managerInstances: any[] = [];
 
 vi.mock('../experimentManager', () => {
   return {
-    ExperimentManager: function MockExperimentManager() {
-      return {
-        createBranch: mockCreateBranch,
-        mergeBranch: mockMergeBranch,
-        getCurrentBranch: vi.fn().mockResolvedValue('main'),
-        getExperimentLog: vi.fn().mockReturnValue([]),
-      };
+    ExperimentManager: class MockExperimentManager {
+      constructor(public cwd: string) {
+        managerInstancesCount++;
+        managerInstances.push(this);
+      }
+
+      async createBranch(...args: any[]) { return mockCreateBranch(...args); }
+      async mergeBranch(...args: any[]) { return mockMergeBranch(...args); }
+      async getCurrentBranch(...args: any[]) { return 'main'; }
+      getExperimentLog(...args: any[]) { return []; }
+      async initEphemeralWorkspace(...args: any[]) { return mockInitEphemeralWorkspace(...args); }
+      async createHypothesisWorkspace(...args: any[]) { return mockCreateHypothesisWorkspace(...args); }
     },
   };
 });
@@ -68,11 +82,14 @@ import {
   proposeHypothesis,
   mergeExperiments,
   runExperimentWorkflow,
+  initializeEphemeralWorkspace,
 } from '../controlPlane';
 
 describe('controlPlane - dispatchExperiment', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    managerInstancesCount = 0;
+    managerInstances.length = 0;
     mockRunStaticChecks.mockResolvedValue({ success: true });
     mockSubmitJob.mockResolvedValue('test-job-123');
   });
@@ -233,6 +250,8 @@ describe('controlPlane - checkExperimentStatus', () => {
 describe('controlPlane - proposeHypothesis', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    managerInstancesCount = 0;
+    managerInstances.length = 0;
     mockCreateBranch.mockResolvedValue('hypothesis/test-branch');
   });
 
@@ -278,6 +297,8 @@ describe('controlPlane - proposeHypothesis', () => {
 describe('controlPlane - mergeExperiments', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    managerInstancesCount = 0;
+    managerInstances.length = 0;
     mockMergeBranch.mockResolvedValue(true);
   });
 
@@ -334,6 +355,8 @@ describe('controlPlane - mergeExperiments', () => {
 describe('controlPlane - runExperimentWorkflow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    managerInstancesCount = 0;
+    managerInstances.length = 0;
     mockCreateBranch.mockResolvedValue('hypothesis/workflow-test');
     mockRunStaticChecks.mockResolvedValue({ success: true });
     mockSubmitJob.mockResolvedValue('job-456');
@@ -388,6 +411,55 @@ describe('controlPlane - runExperimentWorkflow', () => {
     // Check that ExperimentManager was constructed with custom cwd
     // The mock should have been called
     expect(mockCreateBranch).toHaveBeenCalled();
+  });
+});
+
+describe('controlPlane - ephemeral workspace state', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    managerInstancesCount = 0;
+    managerInstances.length = 0;
+  });
+
+  it('should maintain ExperimentManager state across multiple tool calls for the same cwd', async () => {
+    const cwd = '/tmp/project';
+    const targetRepo = '/tmp/repo';
+
+    // 1. Initialize ephemeral workspace
+    const initResult = await initializeEphemeralWorkspace(
+      { targetRepoPath: targetRepo },
+      { cwd }
+    );
+
+    expect(initResult.success).toBe(true);
+    expect(managerInstancesCount).toBe(1);
+    expect(mockInitEphemeralWorkspace).toHaveBeenCalledTimes(1);
+
+    // 2. Propose a hypothesis in ephemeral mode
+    const propResult = await proposeHypothesis(
+      { baseBranch: 'main', hypothesisName: 'hyp-1', ephemeral: true },
+      { cwd }
+    );
+
+    expect(propResult.success).toBe(true);
+    // Should still be the same instance
+    expect(managerInstancesCount).toBe(1);
+    expect(mockCreateHypothesisWorkspace).toHaveBeenCalledTimes(1);
+    
+    // Verify that the same instance was used for both calls
+    expect(mockInitEphemeralWorkspace).toHaveBeenCalled();
+    expect(mockCreateHypothesisWorkspace).toHaveBeenCalled();
+  });
+
+  it('should create separate ExperimentManager instances for different cwds', async () => {
+    const cwd1 = '/tmp/project1';
+    const cwd2 = '/tmp/project2';
+    const targetRepo = '/tmp/repo';
+
+    await initializeEphemeralWorkspace({ targetRepoPath: targetRepo }, { cwd: cwd1 });
+    await initializeEphemeralWorkspace({ targetRepoPath: targetRepo }, { cwd: cwd2 });
+
+    expect(managerInstancesCount).toBe(2);
   });
 });
 
