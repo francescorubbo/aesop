@@ -58,7 +58,7 @@ const mockInitEphemeralWorkspace = vi.hoisted(() =>
 const mockCreateHypothesisWorkspace = vi.hoisted(() => vi.fn().mockResolvedValue('/tmp/ws/hyp-1'));
 
 let managerInstancesCount = 0;
-const managerInstances: any[] = [];
+const managerInstances: unknown[] = [];
 
 vi.mock('../experimentManager', () => {
   return {
@@ -68,23 +68,23 @@ vi.mock('../experimentManager', () => {
         managerInstances.push(this);
       }
 
-      async createBranch(...args: any[]) {
-        return mockCreateBranch(...args);
+      async createBranch(..._args: unknown[]) {
+        return mockCreateBranch(...(_args as [string, string]));
       }
-      async mergeBranch(...args: any[]) {
-        return mockMergeBranch(...args);
+      async mergeBranch(..._args: unknown[]) {
+        return mockMergeBranch(...(_args as [string, string]));
       }
-      async getCurrentBranch(...args: any[]) {
+      async getCurrentBranch(..._args: unknown[]) {
         return 'main';
       }
-      getExperimentLog(...args: any[]) {
+      getExperimentLog(..._args: unknown[]) {
         return [];
       }
-      async initEphemeralWorkspace(...args: any[]) {
-        return mockInitEphemeralWorkspace(...args);
+      async initEphemeralWorkspace(..._args: unknown[]) {
+        return mockInitEphemeralWorkspace(...(_args as [string, string]));
       }
-      async createHypothesisWorkspace(...args: any[]) {
-        return mockCreateHypothesisWorkspace(...args);
+      async createHypothesisWorkspace(..._args: unknown[]) {
+        return mockCreateHypothesisWorkspace(...(_args as [string, string]));
       }
     },
   };
