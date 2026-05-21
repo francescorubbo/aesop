@@ -84,14 +84,16 @@ describe('ExperimentManager', () => {
         // 1. Initialize ephemeral workspace
         // This changes manager.repoPath to point into the sandbox
         await ephemeralManager.initEphemeralWorkspace(hostRepoPath, workspaceRoot);
-        
+
         const currentRepoPath = (ephemeralManager as any).repoPath;
         expect(currentRepoPath).not.toBe(hostRepoPath);
         expect(currentRepoPath).toContain(workspaceRoot);
 
         // 2. Log an experiment
         mockGitInstance.status.mockResolvedValue({ current: 'hypothesis/ephemeral-test' });
-        await ephemeralManager.logExperiment('hypothesis/ephemeral-test', 'success', { accuracy: 0.99 });
+        await ephemeralManager.logExperiment('hypothesis/ephemeral-test', 'success', {
+          accuracy: 0.99,
+        });
 
         // 3. Verify ledger exists in HOST path, NOT ephemeral path
         const hostLedgerPath = join(hostRepoPath, 'experiments.jsonl');
@@ -118,13 +120,16 @@ describe('ExperimentManager', () => {
       try {
         // Pre-seed host ledger
         const hostLedgerPath = join(hostRepoPath, 'experiments.jsonl');
-        writeFileSync(hostLedgerPath, JSON.stringify({
-          timestamp: new Date().toISOString(),
-          branch: 'main',
-          commitHash: 'abc',
-          status: 'success',
-          metrics: {},
-        }) + '\n');
+        writeFileSync(
+          hostLedgerPath,
+          JSON.stringify({
+            timestamp: new Date().toISOString(),
+            branch: 'main',
+            commitHash: 'abc',
+            status: 'success',
+            metrics: {},
+          }) + '\n'
+        );
 
         const ephemeralManager = new ExperimentManager(hostRepoPath);
         await ephemeralManager.initEphemeralWorkspace(hostRepoPath, workspaceRoot);
