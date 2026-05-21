@@ -8,6 +8,8 @@
  */
 
 import { Command, Option } from 'commander';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import {
   createAgentSession,
   SessionManager,
@@ -29,6 +31,14 @@ import {
   runEphemeralExperiment,
   type ControlPlaneOptions,
 } from './controlPlane.js';
+
+/**
+ * Get the default workspace root in the user's home directory.
+ * This ensures ephemeral workspaces are decoupled from the local project directory.
+ */
+function getDefaultWorkspaceRoot(): string {
+  return join(homedir(), '.aesop', 'workspaces');
+}
 
 const program = new Command();
 
@@ -115,7 +125,7 @@ program
   .requiredOption('-r, --target-repo <path>', 'Path to the target repository to sandbox')
   .addOption(
     new Option('-w, --workspace-root <path>', 'Root directory for workspaces').default(
-      '.aesop_workspaces'
+      getDefaultWorkspaceRoot()
     )
   )
   .addOption(new Option('-m, --model <model>', 'Model to use (e.g., anthropic/claude-opus-4-5)'))
@@ -193,7 +203,7 @@ program
   )
   .addOption(
     new Option('-w, --workspace-root <path>', 'Root directory for workspaces').default(
-      '.aesop_workspaces'
+      getDefaultWorkspaceRoot()
     )
   )
   .addOption(new Option('-e, --ephemeral', 'Use ephemeral workspace isolation').default(false))
@@ -268,7 +278,7 @@ program
   )
   .addOption(
     new Option('-w, --workspace-root <path>', 'Root directory for workspaces').default(
-      '.aesop_workspaces'
+      getDefaultWorkspaceRoot()
     )
   )
   .addOption(new Option('-e, --ephemeral', 'Use ephemeral workspace isolation').default(false))
@@ -345,7 +355,7 @@ program
   .description('Show experiment status')
   .addOption(
     new Option('-w, --workspace-root <path>', 'Root directory for workspaces').default(
-      '.aesop_workspaces'
+      getDefaultWorkspaceRoot()
     )
   )
   .addOption(new Option('-e, --ephemeral', 'Check ephemeral workspace status').default(false))
@@ -359,7 +369,7 @@ program
         const { existsSync, readdirSync } = await import('node:fs');
         const { join } = await import('node:path');
 
-        const workspaceRoot = options.workspaceRoot ?? '.aesop_workspaces';
+        const workspaceRoot = options.workspaceRoot ?? getDefaultWorkspaceRoot();
 
         if (!existsSync(workspaceRoot)) {
           console.log(`[Aesop] No workspaces found at ${workspaceRoot}`);
@@ -417,7 +427,7 @@ program
   .description('Merge experiment branch to target')
   .addOption(
     new Option('-w, --workspace-root <path>', 'Root directory for workspaces').default(
-      '.aesop_workspaces'
+      getDefaultWorkspaceRoot()
     )
   )
   .addOption(new Option('-e, --ephemeral', 'Merge from ephemeral workspace to base').default(false))
@@ -475,14 +485,14 @@ program
   .description('Clean up ephemeral workspaces')
   .addOption(
     new Option('-w, --workspace-root <path>', 'Root directory for workspaces').default(
-      '.aesop_workspaces'
+      getDefaultWorkspaceRoot()
     )
   )
   .addOption(new Option('--dry-run', 'Show what would be deleted without deleting').default(false))
   .action(async (options: { workspaceRoot?: string; dryRun?: boolean }) => {
     const { existsSync, readdirSync, rmSync } = await import('node:fs');
 
-    const workspaceRoot = options.workspaceRoot ?? '.aesop_workspaces';
+    const workspaceRoot = options.workspaceRoot ?? getDefaultWorkspaceRoot();
 
     if (!existsSync(workspaceRoot)) {
       console.log(`[Aesop] No workspaces found at ${workspaceRoot}`);
