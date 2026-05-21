@@ -224,7 +224,8 @@ program
         // Run in ephemeral mode
         console.log('[CLI] Running in ephemeral workspace mode');
 
-        const runOptions: ControlPlaneOptions = { workspaceRoot: options.workspaceRoot };
+        const runOptions: ControlPlaneOptions = {};
+        if (options.workspaceRoot) runOptions.workspaceRoot = options.workspaceRoot;
 
         const result = await runEphemeralExperiment(prompt, target, runOptions);
 
@@ -300,7 +301,8 @@ program
         // Create ephemeral workspace
         console.log('[CLI] Creating ephemeral workspace for hypothesis');
 
-        const runOptions: ControlPlaneOptions = { workspaceRoot: options.workspaceRoot };
+        const runOptions: ControlPlaneOptions = {};
+        if (options.workspaceRoot) runOptions.workspaceRoot = options.workspaceRoot;
 
         const result = await runEphemeralExperiment(hypothesis, target, runOptions);
 

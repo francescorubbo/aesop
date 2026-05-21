@@ -86,6 +86,7 @@ describe('ExperimentManager', () => {
         await ephemeralManager.initEphemeralWorkspace(hostRepoPath, workspaceRoot);
 
         const currentRepoPath = (ephemeralManager as unknown as { repoPath: string }).repoPath;
+        expect(currentRepoPath).toBeDefined();
         expect(currentRepoPath).not.toBe(hostRepoPath);
         expect(currentRepoPath).toContain(workspaceRoot);
 
