@@ -85,9 +85,9 @@ describe('ExperimentManager', () => {
         // This changes manager.repoPath to point into the sandbox
         await ephemeralManager.initEphemeralWorkspace(hostRepoPath, workspaceRoot);
 
-        const currentRepoPath = (ephemeralManager as any).repoPath as string;
-        if (!currentRepoPath) {
-          throw new Error('currentRepoPath should be defined');
+        const currentRepoPath = (ephemeralManager as any).repoPath;
+        if (typeof currentRepoPath !== 'string') {
+          throw new Error('currentRepoPath should be a string');
         }
         expect(currentRepoPath).not.toBe(hostRepoPath);
         expect(currentRepoPath).toContain(workspaceRoot);
