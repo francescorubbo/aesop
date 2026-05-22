@@ -47,8 +47,8 @@ const program = new Command();
  */
 function applyGlobalSettings(settings: SettingsManager): void {
   const globalOpts = program.opts();
-  if (globalOpts.model) settings.setDefaultModel(globalOpts.model);
-  if (globalOpts.thinking) settings.setDefaultThinkingLevel(globalOpts.thinking);
+  if (globalOpts['model']) settings.setDefaultModel(globalOpts['model']);
+  if (globalOpts['thinking']) settings.setDefaultThinkingLevel(globalOpts['thinking']);
 }
 
 /**
