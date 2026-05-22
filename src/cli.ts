@@ -42,10 +42,39 @@ function getDefaultWorkspaceRoot(): string {
 
 const program = new Command();
 
+/**
+ * Applies global CLI options (model, thinking) to a SettingsManager.
+ */
+function applyGlobalSettings(settings: SettingsManager): void {
+  const globalOpts = program.opts();
+  if (globalOpts['model']) settings.setDefaultModel(globalOpts['model']);
+  if (globalOpts['thinking']) settings.setDefaultThinkingLevel(globalOpts['thinking']);
+}
+
+/**
+ * Creates a new in-memory SettingsManager configured with global CLI options.
+ */
+function getConfiguredSettings(): SettingsManager {
+  const settings = SettingsManager.inMemory();
+  applyGlobalSettings(settings);
+  return settings;
+}
+
 program
   .name('aesop')
   .description('Distributed ML experiment orchestration CLI powered by Pi')
-  .version('0.2.0');
+  .version('0.2.0')
+  .addOption(new Option('-m, --model <model>', 'Model to use (e.g., anthropic/claude-opus-4-5)'))
+  .addOption(
+    new Option('-t, --thinking <level>', 'Thinking level').choices([
+      'off',
+      'minimal',
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+    ])
+  );
 
 // Global auth state
 let authStorage: AuthStorage;
@@ -65,18 +94,7 @@ function initAuth(): void {
 program
   .command('interactive')
   .description('Start interactive mode with embedded agent')
-  .addOption(new Option('-m, --model <model>', 'Model to use (e.g., anthropic/claude-opus-4-5)'))
-  .addOption(
-    new Option('-t, --thinking <level>', 'Thinking level').choices([
-      'off',
-      'minimal',
-      'low',
-      'medium',
-      'high',
-      'xhigh',
-    ])
-  )
-  .action(async (_options: { model?: string; thinking?: string }) => {
+  .action(async () => {
     initAuth();
 
     const cwd = process.cwd();
@@ -87,6 +105,8 @@ program
       sessionManager: sm,
     }) => {
       const services = await createAgentSessionServices({ cwd: sessionCwd });
+      applyGlobalSettings(services.settingsManager);
+
       return {
         ...(await createAgentSessionFromServices({
           services,
@@ -128,17 +148,6 @@ program
       getDefaultWorkspaceRoot()
     )
   )
-  .addOption(new Option('-m, --model <model>', 'Model to use (e.g., anthropic/claude-opus-4-5)'))
-  .addOption(
-    new Option('-t, --thinking <level>', 'Thinking level').choices([
-      'off',
-      'minimal',
-      'low',
-      'medium',
-      'high',
-      'xhigh',
-    ])
-  )
   .addOption(
     new Option('-c, --validate-cmd <command>', 'Validation command to run').default(
       './aesop_validate.sh'
@@ -149,8 +158,6 @@ program
       objective: string;
       targetRepo: string;
       workspaceRoot: string;
-      model?: string;
-      thinking?: string;
       validateCmd: string;
     }) => {
       initAuth();
@@ -162,7 +169,7 @@ program
         sessionManager: SessionManager.create(process.cwd()),
         authStorage,
         modelRegistry,
-        settingsManager: SettingsManager.inMemory(),
+        settingsManager: getConfiguredSettings(),
       };
 
       console.log('[CLI] Starting Aesop with ephemeral workspace isolation');
@@ -243,11 +250,13 @@ program
         process.exit(1);
       } else {
         // Run in normal mode
+        const settingsManager = getConfiguredSettings();
+
         const { session } = await createAgentSession({
           sessionManager: SessionManager.inMemory(),
           authStorage,
           modelRegistry,
-          settingsManager: SettingsManager.inMemory(),
+          settingsManager,
         });
 
         console.log(`[Aesop] Running experiment: "${prompt}"`);
