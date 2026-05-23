@@ -146,6 +146,8 @@ export interface ControlPlaneOptions {
   workspaceRoot?: string;
   /** Whether to use ephemeral workspaces by default */
   useEphemeralWorkspaces?: boolean;
+  /** Custom validation command (default: './aesop_validate.sh') */
+  validateCmd?: string;
 }
 
 /**
@@ -295,7 +297,7 @@ export async function dispatchExperiment(
 
     // Run backpressure gates if enabled
     if (runChecks) {
-      const checkResult: StaticCheckResult = await runStaticChecks(cwd);
+      const checkResult: StaticCheckResult = await runStaticChecks(cwd, _options.validateCmd);
       if (!checkResult.success) {
         return {
           success: false,
