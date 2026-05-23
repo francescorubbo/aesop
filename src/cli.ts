@@ -315,17 +315,17 @@ program
         // Create ephemeral workspace
         console.log('[CLI] Creating ephemeral workspace for hypothesis');
 
-        const runOptions: ControlPlaneOptions = {};
-        if (options.workspaceRoot) runOptions.workspaceRoot = options.workspaceRoot;
+        const manager = new ExperimentManager(target, {
+          ephemeral: true,
+          workspaceRoot: options.workspaceRoot,
+        });
+        await manager.initEphemeralWorkspace(
+          target,
+          options.workspaceRoot ?? getDefaultWorkspaceRoot()
+        );
+        const workspacePath = await manager.createBranch(options.from ?? 'main', hypothesis);
 
-        const result = await runEphemeralExperiment(hypothesis, target, runOptions);
-
-        if (!result.success) {
-          console.error(`[CLI] Error: ${result.error}`);
-          process.exit(1);
-        }
-
-        console.log(`[Aesop] Created ephemeral workspace: ${result.workspacePath}`);
+        console.log(`[Aesop] Created ephemeral workspace: ${workspacePath}`);
       } else if (options.targetRepo) {
         console.error('[CLI] Error: --target-repo can only be used with --ephemeral');
         process.exit(1);

@@ -27,7 +27,7 @@ export interface CreateBranchOptions {
   /** Whether to use ephemeral workspace (default: false) */
   ephemeral?: boolean;
   /** Workspace root for ephemeral mode */
-  workspaceRoot?: string;
+  workspaceRoot?: string | undefined;
   /** Exact branch name to use, bypassing automatic formatting */
   literalName?: string | undefined;
 }
