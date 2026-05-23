@@ -62,9 +62,22 @@ export class WorkspaceManager {
   private sessionId: string;
   private createdAt: Date;
 
-  constructor(workspaceRoot: string, _targetRepoPath: string, showProgress = false) {
+  /**
+   * Create a WorkspaceManager for ephemeral workspaces.
+   *
+   * @param workspaceRoot - Root directory for workspaces
+   * @param targetRepoPath - Path to the target repository (used for initialization)
+   * @param showProgress - Whether to show progress during clone operations
+   * @param sessionId - Optional existing session ID to target (for merging existing workspaces)
+   */
+  constructor(
+    workspaceRoot: string,
+    _targetRepoPath: string,
+    showProgress = false,
+    sessionId?: string
+  ) {
     this.workspaceRoot = resolve(workspaceRoot);
-    this.sessionId = `session_${Date.now()}`;
+    this.sessionId = sessionId ?? `session_${Date.now()}`;
     this.createdAt = new Date();
     this.git = simpleGit();
 
@@ -344,6 +357,62 @@ export class WorkspaceManager {
       .replace(/^-|-$/g, '')
       .slice(0, 50);
   }
+}
+
+/**
+ * Parse an ephemeral workspace path to extract session ID and hypothesis name.
+ *
+ * Supports paths like:
+ * - /path/to/.aesop_workspaces/session_123/hyp_my-hypothesis
+ * - /path/to/.aesop_workspaces/session_123/hyp_my-hypothesis/.git
+ *
+ * @param workspaceRoot - Root directory for workspaces
+ * @param currentDir - Directory to parse (default: current working directory)
+ * @returns Parsed workspace components or null if not in a workspace
+ */
+export function parseEphemeralWorkspace(
+  workspaceRoot: string,
+  currentDir = process.cwd()
+): { sessionId: string; hypothesisName: string; hypothesisPath: string } | null {
+  const resolvedRoot = resolve(workspaceRoot);
+  const resolvedCwd = resolve(currentDir);
+
+  // Check if current directory is under the workspace root
+  if (!resolvedCwd.startsWith(resolvedRoot)) {
+    return null;
+  }
+
+  // Extract the relative path from workspace root
+  const relativePath = resolvedCwd.slice(resolvedRoot.length + 1);
+  const parts = relativePath.split(/[\\/]/);
+
+  if (parts.length < 2) {
+    return null;
+  }
+
+  const sessionId = parts[0]!;
+
+  // Check if it matches session pattern
+  if (!sessionId.startsWith('session_')) {
+    return null;
+  }
+
+  // Find the hypothesis directory (starts with hyp_)
+  const hypIndex = parts.findIndex((p) => p.startsWith('hyp_'));
+
+  if (hypIndex === -1) {
+    return null;
+  }
+
+  const hypothesisDir = parts[hypIndex]!;
+  const hypothesisName = hypothesisDir.slice(4); // Remove 'hyp_' prefix
+  const hypothesisPath = join(resolvedRoot, sessionId, hypothesisDir);
+
+  return {
+    sessionId,
+    hypothesisName,
+    hypothesisPath,
+  };
 }
 
 /**
