@@ -486,15 +486,31 @@ program
         push?: boolean;
       }
     ) => {
-      const manager = new ExperimentManager(process.cwd());
+      const workspaceRoot = options.workspaceRoot ?? getDefaultWorkspaceRoot();
 
       if (options.ephemeral) {
-        // Get workspace manager and merge into base
-        const wm = manager.getWorkspaceManager();
-        if (!wm) {
-          console.error('[Aesop] Ephemeral workspace not initialized');
+        // Try to detect if we're inside an ephemeral workspace
+        const { parseEphemeralWorkspace, WorkspaceManager } = await import('./workspaceManager.js');
+        const workspaceInfo = parseEphemeralWorkspace(workspaceRoot);
+
+        if (!workspaceInfo) {
+          console.error(
+            `[CLI] Not inside an ephemeral workspace. Run this command from within an ephemeral workspace directory.`
+          );
+          console.error(`[CLI] Expected path pattern: ${workspaceRoot}/session_xxx/hyp_yyy/`);
           process.exit(1);
         }
+
+        console.log(`[CLI] Detected ephemeral workspace: ${workspaceInfo.sessionId}`);
+        console.log(`[CLI] Hypothesis: ${workspaceInfo.hypothesisName}`);
+
+        // Create WorkspaceManager targeting the existing session
+        const wm = new WorkspaceManager(
+          workspaceRoot,
+          workspaceInfo.hypothesisPath,
+          false,
+          workspaceInfo.sessionId
+        );
 
         console.log(`[Aesop] Merging ${source} into base workspace...`);
         const success = await wm.mergeIntoBase(source, target);
@@ -509,6 +525,7 @@ program
           process.exit(1);
         }
       } else {
+        const manager = new ExperimentManager(process.cwd());
         const success = await manager.mergeBranch(source, target);
 
         if (success) {
