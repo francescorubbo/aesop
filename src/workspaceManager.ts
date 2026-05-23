@@ -40,9 +40,9 @@ export interface CreateHypothesisOptions {
   /** Name for the hypothesis */
   hypothesisName: string;
   /** Branch name to checkout (default: auto-generated) */
-  branchName?: string;
+  branchName?: string | undefined;
   /** Base branch to use (default: main) */
-  baseBranch?: string;
+  baseBranch?: string | undefined;
 }
 
 /**

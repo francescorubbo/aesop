@@ -546,7 +546,7 @@ export async function runExperimentWorkflow(
 export async function runEphemeralExperiment(
   hypothesis: string,
   targetRepoPath: string,
-  options: ControlPlaneOptions = {}
+  options: ControlPlaneOptions & { branchName?: string } = {}
 ): Promise<{
   sessionId?: string;
   workspacePath?: string;
@@ -571,7 +571,9 @@ export async function runEphemeralExperiment(
     const manager = getExperimentManager(options.cwd ?? process.cwd());
     await manager.initEphemeralWorkspace(targetRepoPath, workspaceRoot);
 
-    const workspacePath = await manager.createHypothesisWorkspace(hypothesis);
+    const workspacePath = await manager.createHypothesisWorkspace(hypothesis, 'main', {
+      branchName: options.branchName,
+    });
 
     const result: { success: true; sessionId?: string; workspacePath: string; basePath: string } = {
       success: true,
