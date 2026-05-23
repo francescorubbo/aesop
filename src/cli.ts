@@ -347,14 +347,17 @@ program
   .addOption(
     new Option('-c, --cwd <path>', 'Working directory for the experiment').default(process.cwd())
   )
-  .addOption(new Option('-r, --run-cmd <command>', 'Command to run on the compute backend'))
+  .requiredOption(
+    '-r, --run-cmd <command>',
+    'Command to run on the compute backend (required for language-agnostic execution)'
+  )
   .addOption(
     new Option('--validate-cmd <command>', 'Validation command').default('./aesop_validate.sh')
   )
   .action(
     async (
       branch: string | undefined,
-      options: { cwd?: string; runCmd?: string; validateCmd?: string }
+      options: { cwd?: string; runCmd: string; validateCmd?: string }
     ) => {
       const currentBranch =
         branch ??
@@ -377,7 +380,7 @@ program
       }
 
       const adapter = await getActiveAdapter();
-      const runCmd = options.runCmd ?? `python train.py --branch ${currentBranch}`;
+      const runCmd = options.runCmd;
 
       console.log(`[Aesop] Dispatching ${currentBranch} with command: "${runCmd}"...`);
       const jobId = await adapter.submitJob(currentBranch, runCmd, options.cwd);
