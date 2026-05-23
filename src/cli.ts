@@ -232,12 +232,11 @@ program
         // Run in ephemeral mode
         console.log('[CLI] Running in ephemeral workspace mode');
 
-        const runOptions: ControlPlaneOptions = {};
+        const runOptions: ControlPlaneOptions & { branchName?: string } = {};
         if (options.workspaceRoot) runOptions.workspaceRoot = options.workspaceRoot;
+        if (options.branch) runOptions.branchName = options.branch;
 
-        const actualPrompt = options.branch ? `On branch ${options.branch}: ${prompt}` : prompt;
-
-        const result = await runEphemeralExperiment(actualPrompt, target, runOptions);
+        const result = await runEphemeralExperiment(prompt, target, runOptions);
 
         if (!result.success) {
           console.error(`[CLI] Error: ${result.error}`);
@@ -253,6 +252,9 @@ program
         process.exit(1);
       } else {
         // Run in normal mode
+        const manager = new ExperimentManager(process.cwd());
+        await manager.createBranch('main', prompt, { literalName: options.branch });
+
         const settingsManager = getConfiguredSettings();
 
         const { session } = await createAgentSession({
@@ -262,9 +264,7 @@ program
           settingsManager,
         });
 
-        const actualPrompt = options.branch ? `On branch ${options.branch}: ${prompt}` : prompt;
-
-        console.log(`[Aesop] Running experiment: "${actualPrompt}"`);
+        console.log(`[Aesop] Running experiment: "${prompt}"`);
 
         session.subscribe((event: AgentSessionEvent) => {
           if (
@@ -278,7 +278,7 @@ program
           }
         });
 
-        await session.prompt(actualPrompt);
+        await session.prompt(prompt);
         console.log('\n[Aesop] Experiment completed.');
       }
     }

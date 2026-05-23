@@ -8,7 +8,12 @@
 import { appendFileSync, readFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import simpleGit, { SimpleGit } from 'simple-git';
-import { WorkspaceManager, createWorkspace, type WorkspaceInfo } from './workspaceManager.js';
+import {
+  WorkspaceManager,
+  createWorkspace,
+  type WorkspaceInfo,
+  type CreateHypothesisOptions,
+} from './workspaceManager.js';
 
 export interface ExperimentRecord {
   timestamp: string;
@@ -23,6 +28,8 @@ export interface CreateBranchOptions {
   ephemeral?: boolean;
   /** Workspace root for ephemeral mode */
   workspaceRoot?: string;
+  /** Exact branch name to use, bypassing automatic formatting */
+  literalName?: string | undefined;
 }
 
 export interface IExperimentManager {
@@ -118,21 +125,26 @@ export class ExperimentManager implements IExperimentManager {
     options: CreateBranchOptions = {}
   ): Promise<string> {
     if (options.ephemeral || this.isEphemeral) {
-      return this.createEphemeralBranch(baseBranch, hypothesis);
+      return this.createEphemeralBranch(baseBranch, hypothesis, options);
     }
-    return this.createLocalBranch(baseBranch, hypothesis);
+    return this.createLocalBranch(baseBranch, hypothesis, options);
   }
 
   /**
    * Create a branch in an ephemeral workspace.
    */
-  private async createEphemeralBranch(baseBranch: string, hypothesis: string): Promise<string> {
+  private async createEphemeralBranch(
+    baseBranch: string,
+    hypothesis: string,
+    options: CreateBranchOptions = {}
+  ): Promise<string> {
     if (!this.workspaceManager) {
       throw new Error('Ephemeral workspace not initialized. Call initEphemeralWorkspace first.');
     }
 
     const workspaceInfo = await this.workspaceManager.createHypothesisWorkspace(hypothesis, {
       baseBranch,
+      branchName: options.literalName,
     });
 
     this.currentWorkspacePath = workspaceInfo.hypothesisPath ?? null;
@@ -145,8 +157,12 @@ export class ExperimentManager implements IExperimentManager {
   /**
    * Create a branch locally in the repository.
    */
-  private async createLocalBranch(baseBranch: string, hypothesis: string): Promise<string> {
-    const branchName = this.formatBranchName(hypothesis);
+  private async createLocalBranch(
+    baseBranch: string,
+    hypothesis: string,
+    options: CreateBranchOptions = {}
+  ): Promise<string> {
+    const branchName = options.literalName ?? this.formatBranchName(hypothesis);
 
     // Fetch and checkout base branch
     await this.git.fetch('origin');
@@ -252,12 +268,17 @@ export class ExperimentManager implements IExperimentManager {
    * @param baseBranch - Base branch to clone from (default: main)
    * @returns Promise resolving to workspace path
    */
-  async createHypothesisWorkspace(hypothesisName: string, baseBranch = 'main'): Promise<string> {
+  async createHypothesisWorkspace(
+    hypothesisName: string,
+    baseBranch = 'main',
+    options: Partial<CreateHypothesisOptions> = {}
+  ): Promise<string> {
     if (!this.workspaceManager) {
       throw new Error('Ephemeral workspace not initialized. Call initEphemeralWorkspace first.');
     }
 
     const workspaceInfo = await this.workspaceManager.createHypothesisWorkspace(hypothesisName, {
+      ...options,
       baseBranch,
     });
 
