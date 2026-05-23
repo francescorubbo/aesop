@@ -235,7 +235,9 @@ program
         const runOptions: ControlPlaneOptions = {};
         if (options.workspaceRoot) runOptions.workspaceRoot = options.workspaceRoot;
 
-        const result = await runEphemeralExperiment(prompt, target, runOptions);
+        const actualPrompt = options.branch ? `On branch ${options.branch}: ${prompt}` : prompt;
+
+        const result = await runEphemeralExperiment(actualPrompt, target, runOptions);
 
         if (!result.success) {
           console.error(`[CLI] Error: ${result.error}`);
@@ -260,7 +262,9 @@ program
           settingsManager,
         });
 
-        console.log(`[Aesop] Running experiment: "${prompt}"`);
+        const actualPrompt = options.branch ? `On branch ${options.branch}: ${prompt}` : prompt;
+
+        console.log(`[Aesop] Running experiment: "${actualPrompt}"`);
 
         session.subscribe((event: AgentSessionEvent) => {
           if (
@@ -274,7 +278,7 @@ program
           }
         });
 
-        await session.prompt(prompt);
+        await session.prompt(actualPrompt);
         console.log('\n[Aesop] Experiment completed.');
       }
     }
