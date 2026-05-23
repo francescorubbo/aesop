@@ -170,6 +170,7 @@ program
         authStorage,
         modelRegistry,
         settingsManager: getConfiguredSettings(),
+        validateCmd: options.validateCmd,
       };
 
       console.log('[CLI] Starting Aesop with ephemeral workspace isolation');
