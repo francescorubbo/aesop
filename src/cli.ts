@@ -347,27 +347,46 @@ program
   .addOption(
     new Option('-c, --cwd <path>', 'Working directory for the experiment').default(process.cwd())
   )
+  .addOption(new Option('-r, --run-cmd <command>', 'Command to run on the compute backend'))
   .addOption(
     new Option('--validate-cmd <command>', 'Validation command').default('./aesop_validate.sh')
   )
-  .action(async (branch: string | undefined, options: { cwd?: string; validateCmd?: string }) => {
-    const currentBranch =
-      branch ??
-      (await new ExperimentManager(options.cwd ?? process.cwd()).getCurrentBranch()) ??
-      'main';
-    const adapter = await getActiveAdapter();
+  .action(
+    async (
+      branch: string | undefined,
+      options: { cwd?: string; runCmd?: string; validateCmd?: string }
+    ) => {
+      const currentBranch =
+        branch ??
+        (await new ExperimentManager(options.cwd ?? process.cwd()).getCurrentBranch()) ??
+        'main';
 
-    console.log(`[Aesop] Dispatching ${currentBranch}...`);
-    const jobId = await adapter.submitJob(
-      currentBranch,
-      `python train.py --branch ${currentBranch}`,
-      options.cwd
-    );
+      // Run local validation if requested
+      if (options.validateCmd) {
+        console.log(`[CLI] Validating branch ${currentBranch} locally...`);
+        const { runStaticChecks } = await import('./backpressureGates.js');
+        const checkResult = await runStaticChecks(
+          options.cwd ?? process.cwd(),
+          options.validateCmd
+        );
+        if (!checkResult.success) {
+          console.error(`[CLI] Local validation failed:\n${checkResult.errorOutput}`);
+          process.exit(1);
+        }
+        console.log(`[CLI] Local validation passed.`);
+      }
 
-    console.log(`[Aesop] Job submitted: ${jobId}`);
-    const status = await adapter.checkStatus(jobId);
-    console.log(`[Aesop] Status: ${status.status}`);
-  });
+      const adapter = await getActiveAdapter();
+      const runCmd = options.runCmd ?? `python train.py --branch ${currentBranch}`;
+
+      console.log(`[Aesop] Dispatching ${currentBranch} with command: "${runCmd}"...`);
+      const jobId = await adapter.submitJob(currentBranch, runCmd, options.cwd);
+
+      console.log(`[Aesop] Job submitted: ${jobId}`);
+      const status = await adapter.checkStatus(jobId);
+      console.log(`[Aesop] Status: ${status.status}`);
+    }
+  );
 
 /**
  * Check experiment status
