@@ -10,7 +10,7 @@ rm -f eval_result.json   # belt-and-suspenders; harness also does this
 uv run python train.py
 
 echo "Verifying results..."
-python - <<'EOF'
+uv run python - <<'EOF'
 import json, os, time, sys
 path = "eval_result.json"
 if not os.path.exists(path):

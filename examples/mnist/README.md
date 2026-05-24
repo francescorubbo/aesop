@@ -83,7 +83,7 @@ Modify `aesop_validate.sh` to change what constitutes a successful experiment:
 
 ```bash
 # Add custom accuracy threshold check
-python -c "
+uv run python -c "
 import json
 with open('eval_result.json') as f:
     result = json.load(f)
