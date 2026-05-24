@@ -50,15 +50,19 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Setup Python
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install Python and uv
         uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
 
-      - name: Install dependencies
+      - name: Install MNIST dependencies
         run: uv sync
         working-directory: examples/mnist
 
@@ -67,6 +71,5 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         run: |
           cd examples/mnist
-          export PATH="$OLDPWD/node_modules/.bin:$HOME/.local/bin:$PATH"
-          npx tsx ../../src/cli.ts run "Add one more hidden layer with 256 neurons to improve accuracy"
+          node ../../dist/cli.js run "Add one more hidden layer with 256 neurons to improve accuracy"
         working-directory: .
