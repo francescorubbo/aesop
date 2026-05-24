@@ -40,6 +40,9 @@ interface AesopConfig {
   metric?: string;
   maxIterations?: number;
   model?: string;
+  agent?: {
+    model?: string;
+  };
 }
 
 /**
@@ -205,17 +208,20 @@ program
       const projectDir = process.cwd();
       const config = loadConfig(projectDir);
 
+      // Support both flat config (model at root) and nested config (model under agent)
+      const model = options.model ?? config.model ?? (config as { agent?: { model?: string } }).agent?.model;
+
       const validateCmd = options.validateCmd ?? config.validateCmd ?? DEFAULT_VALIDATE_CMD;
       const metric = options.metric ?? config.metric ?? DEFAULT_METRIC;
       const maxIterations =
         parseInt(options.maxIterations ?? '', 10) || config.maxIterations || DEFAULT_MAX_ITERATIONS;
-      const model = options.model ?? config.model;
 
       console.log('[Aesop] Running experiment...');
       console.log(`[Aesop] Hypothesis: "${hypothesis}"`);
       console.log(`[Aesop] Metric: ${metric}`);
       console.log(`[Aesop] Max iterations: ${maxIterations}`);
       console.log(`[Aesop] Validate command: ${validateCmd}`);
+      console.log(`[Aesop] Model: ${model ?? 'default'}`);
       console.log('');
 
       // Set up settings
