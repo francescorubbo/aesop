@@ -66,6 +66,7 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         run: |
-          export PATH="$HOME/.local/bin:$PATH"
-          npm run dev -- run "Add one more hidden layer with 256 neurons to improve accuracy"
-        working-directory: examples/mnist
+          cd examples/mnist
+          export PATH="$OLDPWD/node_modules/.bin:$HOME/.local/bin:$PATH"
+          npx tsx ../../src/cli.ts run "Add one more hidden layer with 256 neurons to improve accuracy"
+        working-directory: .
