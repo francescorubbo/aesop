@@ -209,7 +209,8 @@ program
       const config = loadConfig(projectDir);
 
       // Support both flat config (model at root) and nested config (model under agent)
-      const model = options.model ?? config.model ?? (config as { agent?: { model?: string } }).agent?.model;
+      const model =
+        options.model ?? config.model ?? (config as { agent?: { model?: string } }).agent?.model;
 
       const validateCmd = options.validateCmd ?? config.validateCmd ?? DEFAULT_VALIDATE_CMD;
       const metric = options.metric ?? config.metric ?? DEFAULT_METRIC;
