@@ -25,6 +25,7 @@ import { WorkspaceManager } from './workspaceManager.js';
 import { runWithValidation } from './validateContract.js';
 import { checkRatchet, type RatchetResult } from './ratchet.js';
 import { LedgerManager, type LedgerEntry } from './ledger.js';
+import { createSandboxExtension } from './sandboxExtension.js';
 
 /**
  * Options for running an experiment.
@@ -184,6 +185,7 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
     agentResourceLoader = new DefaultResourceLoader({
       cwd: workspace.path,
       agentDir: getAgentDir(),
+      extensionFactories: [createSandboxExtension(workspace.path)],
       systemPromptOverride: () => systemPrompt,
       appendSystemPromptOverride: () => [],
     });
@@ -231,6 +233,9 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
       authStorage,
       modelRegistry,
       model: resolvedModel,
+      // Path guard enforcement is handled by createSandboxExtension() wired through
+      // DefaultResourceLoader's extensionFactories. The sandbox extension intercepts
+      // tool_call events and blocks any access to paths outside the workspace.
       tools: ['read', 'bash', 'edit', 'write'],
     });
 
