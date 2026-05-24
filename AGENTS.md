@@ -2,7 +2,7 @@
 
 ## Overview
 
-Aesop is a standalone Node.js/TypeScript CLI application that embeds the Pi coding agent via the SDK. It provides distributed ML experiment orchestration with Git-based experiment versioning, autonomous agent-driven execution, and automated result aggregation.
+Aesop is a standalone Node.js/TypeScript CLI application that embeds the Pi coding agent via the SDK. It provides ML experiment orchestration with ephemeral workspaces for isolation, automatic result logging, and monotonic improvement enforcement.
 
 ## Architecture
 
@@ -10,16 +10,16 @@ Aesop is a standalone Node.js/TypeScript CLI application that embeds the Pi codi
 ┌─────────────────────────────────────────────────────────────┐
 │                        Aesop CLI                            │
 │  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐ │
-│  │    CLI      │  │  Experiment  │  │  Discovery Engine   │ │
-│  │  Interface  │──│   Manager    │──│  (Slurm/K8s/Local)  │ │
+│  │    CLI       │  │  Experiment  │  │   Ledger Manager    │ │
+│  │  Interface   │──│   Harness   │──│   (experiments.jsonl)│ │
 │  └─────────────┘  └──────────────┘  └────────────────────┘ │
 │         │                │                    │            │
 │         ▼                ▼                    ▼            │
 │  ┌─────────────────────────────────────────────────────────┐│
 │  │              Pi SDK (Embedded Agent)                    ││
 │  │  ┌─────────┐  ┌──────────┐  ┌────────────────────────┐  ││
-│  │  │ Session │  │  Tools   │  │  Experiment-Aware      │  ││
-│  │  │ Manager │  │ (read,   │  │  System Prompt         │  ││
+│  │  │ Session │  │  Tools   │  │  Experiment-Aware       │  ││
+│  │  │ Manager │  │ (read,   │  │  System Prompt          │  ││
 │  │  │         │  │  bash,   │  │                        │  ││
 │  │  │         │  │  edit)   │  │                        │  ││
 │  │  └─────────┘  └──────────┘  └────────────────────────┘  ││
@@ -29,59 +29,47 @@ Aesop is a standalone Node.js/TypeScript CLI application that embeds the Pi codi
 
 ## CLI Commands
 
-### `aesop run <prompt>`
+### `aesop run <hypothesis>`
 
-Run an experiment with a natural language prompt:
+Run a single experiment end-to-end:
 
 ```bash
 aesop run "Train ResNet-50 on CIFAR-10 with learning rate 0.001"
 ```
 
-### `aesop branch <hypothesis>`
+Options:
 
-Create an experiment branch from a hypothesis:
+- `--validate-cmd <cmd>` - Validation command (default: from `.aesop.json`, then `./aesop_validate.sh`)
+- `--metric <key>` - Primary metric (default: from `.aesop.json`, then `accuracy`)
+- `--max-iterations <n>` - Max agent iterations (default: from `.aesop.json`, then 10)
+- `--model <model>` - Model override (default: from `.aesop.json`)
 
-```bash
-aesop branch "Test if increasing learning rate improves convergence"
-```
-
-### `aesop dispatch <branch>`
-
-Dispatch an experiment branch to the available compute backend:
-
-```bash
-aesop dispatch hypothesis/test-lr
-```
-
-### `aesop status [branch]`
-
-Check experiment status:
-
-```bash
-aesop status              # Current branch status
-aesop status main         # Main branch status
-```
-
-### `aesop merge <source> <target>`
-
-Merge successful experiments back to target:
-
-```bash
-aesop merge hypothesis/test-lr main
-```
+Exits with code 0 on success or `no_improvement`, non-zero on failure.
 
 ### `aesop interactive`
 
-Start interactive mode with full agent capabilities:
+Start interactive mode with full agent capabilities in the current directory:
 
 ```bash
 aesop interactive
 ```
 
+Uses `SessionManager.inMemory()` so no session is persisted. Intended for debugging and developing the validate script.
+
+### `aesop status`
+
+Show experiment history from the ledger:
+
+```bash
+aesop status
+```
+
+Use `--json` for machine-readable output.
+
 ## Branch Strategy
 
 - **Feature branches**: Prefix with `feat/`, `fix/`, `refactor/`, or `chore/`
-- **Experiment branches**: Use `hypothesis/<name>` (managed by `ExperimentManager`)
+- **Experiment branches**: Use `hypothesis/<name>` (created by `runExperiment`)
 - **Base**: Work off `main` unless otherwise specified
 
 ## Workflow
@@ -140,12 +128,23 @@ Aesop uses the Pi SDK to embed a coding agent. Key integration points:
 ```typescript
 import { createAgentSession, SessionManager } from '@earendil-works/pi-coding-agent';
 
-// Create session with custom experiment-aware system prompt
+// Create session with experiment-aware system prompt
 const { session } = await createAgentSession({
   sessionManager: SessionManager.inMemory(),
   // Custom tools and prompts are loaded via DefaultResourceLoader
 });
 ```
+
+## Modules
+
+| Module                 | Purpose                                                        |
+| ---------------------- | -------------------------------------------------------------- |
+| `runExperiment.ts`     | Core experiment harness - orchestrator for the experiment loop |
+| `workspaceManager.ts`  | Manages ephemeral workspaces via git worktree                  |
+| `ledger.ts`            | Append-only experiment log (JSONL)                             |
+| `ratchet.ts`           | Monotonic improvement enforcement                              |
+| `validateContract.ts`  | Strict result verification                                     |
+| `backpressureGates.ts` | Pre-experiment static checks                                   |
 
 ## PR Guidelines
 

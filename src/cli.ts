@@ -1,69 +1,148 @@
 #!/usr/bin/env node
 
 /**
- * Aesop CLI - Distributed ML Experiment Orchestration
+ * Aesop CLI - ML Experiment Orchestration
  *
- * Embeds the Pi coding agent for natural language-driven experiment management.
- * Supports ephemeral workspaces for complete experiment isolation.
+ * Simplified CLI with three commands:
+ * - run: Execute an experiment from a natural language prompt
+ * - interactive: Open an agent session for exploration
+ * - status: Show experiment history from the ledger
  */
 
 import { Command, Option } from 'commander';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import {
-  createAgentSession,
   SessionManager,
-  AuthStorage,
-  ModelRegistry,
   InteractiveMode,
+  getAgentDir,
   type CreateAgentSessionRuntimeFactory,
   createAgentSessionFromServices,
-  createAgentSessionRuntime,
   createAgentSessionServices,
-  getAgentDir,
+  createAgentSessionRuntime,
   SettingsManager,
-  type AgentSessionEvent,
 } from '@earendil-works/pi-coding-agent';
-import { ExperimentManager } from './experimentManager.js';
-import { getActiveAdapter } from './discoveryEngine.js';
-import {
-  startAesopDaemon,
-  runEphemeralExperiment,
-  type ControlPlaneOptions,
-} from './controlPlane.js';
+import { readFileSync, existsSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { runExperiment, type RunExperimentResult } from './runExperiment.js';
+import { LedgerManager, type LedgerEntry } from './ledger.js';
 
 /**
- * Get the default workspace root in the user's home directory.
- * This ensures ephemeral workspaces are decoupled from the local project directory.
+ * Default configuration values, optionally overridden by .aesop.json.
  */
-function getDefaultWorkspaceRoot(): string {
-  return join(homedir(), '.aesop', 'workspaces');
+const DEFAULT_VALIDATE_CMD = './aesop_validate.sh';
+const DEFAULT_METRIC = 'accuracy';
+const DEFAULT_MAX_ITERATIONS = 10;
+
+/**
+ * Schema for .aesop.json configuration.
+ */
+interface AesopConfig {
+  validateCmd?: string;
+  metric?: string;
+  maxIterations?: number;
+  model?: string;
+}
+
+/**
+ * Load configuration from .aesop.json if it exists.
+ */
+function loadConfig(projectDir: string): AesopConfig {
+  const configPath = join(projectDir, '.aesop.json');
+  if (existsSync(configPath)) {
+    try {
+      return JSON.parse(readFileSync(configPath, 'utf-8'));
+    } catch {
+      // Invalid JSON, ignore and use defaults
+    }
+  }
+  return {};
+}
+
+/**
+ * Format duration in milliseconds to human-readable string.
+ */
+function formatDuration(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+
+  if (minutes > 0) {
+    return `${minutes}m${remainingSeconds}s`;
+  }
+  return `${seconds}s`;
+}
+
+/**
+ * Print experiment status table to console.
+ */
+function printStatusTable(entries: LedgerEntry[]): void {
+  if (entries.length === 0) {
+    console.log('No experiments found. Run `aesop run "<hypothesis>"` to start.');
+    return;
+  }
+
+  // Group by branch, keeping only the latest entry for each
+  const latestByBranch = new Map<string, LedgerEntry>();
+  for (const entry of entries) {
+    const existing = latestByBranch.get(entry.branch);
+    if (!existing || entry.timestamp > existing.timestamp) {
+      latestByBranch.set(entry.branch, entry);
+    }
+  }
+
+  // Sort by timestamp, newest first
+  const sorted = Array.from(latestByBranch.values()).sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
+
+  console.log('');
+  console.log('Branch'.padEnd(35) + 'Status'.padEnd(16) + 'Metric'.padEnd(12) + 'Time');
+  console.log('-'.repeat(75));
+
+  for (const entry of sorted) {
+    const branch = entry.branch.padEnd(35);
+    const status = entry.status.padEnd(16);
+    const metricValue =
+      entry.metrics && Object.keys(entry.metrics).length > 0
+        ? (Object.values(entry.metrics)[0]?.toFixed(4) ?? '—')
+        : '—';
+    const duration = formatDuration(entry.durationMs);
+
+    console.log(`${branch}${status}${metricValue.padEnd(12)}${duration}`);
+  }
+
+  console.log('');
+}
+
+/**
+ * Print status as JSON for machine-readable output.
+ */
+function printStatusJson(entries: LedgerEntry[]): void {
+  // Group by branch, keeping only the latest entry for each
+  const latestByBranch = new Map<string, LedgerEntry>();
+  for (const entry of entries) {
+    const existing = latestByBranch.get(entry.branch);
+    if (!existing || entry.timestamp > existing.timestamp) {
+      latestByBranch.set(entry.branch, entry);
+    }
+  }
+
+  const output = Array.from(latestByBranch.values()).map((entry) => ({
+    branch: entry.branch,
+    status: entry.status,
+    metrics: entry.metrics,
+    durationMs: entry.durationMs,
+    timestamp: entry.timestamp,
+  }));
+
+  console.log(JSON.stringify(output, null, 2));
 }
 
 const program = new Command();
 
-/**
- * Applies global CLI options (model, thinking) to a SettingsManager.
- */
-function applyGlobalSettings(settings: SettingsManager): void {
-  const globalOpts = program.opts();
-  if (globalOpts['model']) settings.setDefaultModel(globalOpts['model']);
-  if (globalOpts['thinking']) settings.setDefaultThinkingLevel(globalOpts['thinking']);
-}
-
-/**
- * Creates a new in-memory SettingsManager configured with global CLI options.
- */
-function getConfiguredSettings(): SettingsManager {
-  const settings = SettingsManager.inMemory();
-  applyGlobalSettings(settings);
-  return settings;
-}
-
 program
   .name('aesop')
-  .description('Distributed ML experiment orchestration CLI powered by Pi')
-  .version('0.2.0')
+  .description('ML experiment orchestration CLI powered by Pi')
+  .version('0.3.0')
   .addOption(new Option('-m, --model <model>', 'Model to use (e.g., anthropic/claude-opus-4-5)'))
   .addOption(
     new Option('-t, --thinking <level>', 'Thinking level').choices([
@@ -76,29 +155,121 @@ program
     ])
   );
 
-// Global auth state
-let authStorage: AuthStorage;
-let modelRegistry: ModelRegistry;
-
 /**
- * Initialize authentication and model registry.
+ * Apply global settings to a SettingsManager.
  */
-function initAuth(): void {
-  authStorage = AuthStorage.create();
-  modelRegistry = ModelRegistry.create(authStorage);
+function applyGlobalSettings(settings: SettingsManager): void {
+  const globalOpts = program.opts();
+  if (globalOpts['model']) settings.setDefaultModel(globalOpts['model']);
+  if (globalOpts['thinking']) settings.setDefaultThinkingLevel(globalOpts['thinking']);
 }
 
 /**
- * Interactive mode - full TUI with embedded agent
+ * Get configured SettingsManager from global options.
  */
+function getConfiguredSettings(): SettingsManager {
+  const settings = SettingsManager.inMemory();
+  applyGlobalSettings(settings);
+  return settings;
+}
+
+// ============================================================================
+// RUN COMMAND
+// ============================================================================
+
+program
+  .command('run <hypothesis>')
+  .description('Run a single experiment end-to-end')
+  .addOption(
+    new Option('-c, --validate-cmd <command>', 'Validation command to run').default(
+      DEFAULT_VALIDATE_CMD
+    )
+  )
+  .addOption(new Option('-m, --metric <key>', 'Primary metric to optimize').default(DEFAULT_METRIC))
+  .addOption(
+    new Option('-i, --max-iterations <n>', 'Maximum agent iterations').default(
+      DEFAULT_MAX_ITERATIONS.toString()
+    )
+  )
+  .addOption(new Option('--model <model>', 'Model override for the agent'))
+  .action(
+    async (
+      hypothesis: string,
+      options: {
+        validateCmd?: string;
+        metric?: string;
+        maxIterations?: string;
+        model?: string;
+      }
+    ) => {
+      const projectDir = process.cwd();
+      const config = loadConfig(projectDir);
+
+      const validateCmd = options.validateCmd ?? config.validateCmd ?? DEFAULT_VALIDATE_CMD;
+      const metric = options.metric ?? config.metric ?? DEFAULT_METRIC;
+      const maxIterations =
+        parseInt(options.maxIterations ?? '', 10) || config.maxIterations || DEFAULT_MAX_ITERATIONS;
+      const model = options.model ?? config.model;
+
+      console.log('[Aesop] Running experiment...');
+      console.log(`[Aesop] Hypothesis: "${hypothesis}"`);
+      console.log(`[Aesop] Metric: ${metric}`);
+      console.log(`[Aesop] Max iterations: ${maxIterations}`);
+      console.log(`[Aesop] Validate command: ${validateCmd}`);
+      console.log('');
+
+      // Set up settings
+      const settingsManager = getConfiguredSettings();
+      if (model) {
+        settingsManager.setDefaultModel(model);
+      }
+
+      let result: RunExperimentResult | null = null;
+
+      try {
+        result = await runExperiment({
+          projectDir,
+          hypothesis,
+          validateCmd,
+          metricKey: metric,
+          maxIterations,
+          onLog: (msg) => {
+            console.log(msg);
+          },
+        });
+
+        console.log('');
+        console.log(`[Aesop] Experiment completed: ${result.status}`);
+
+        if (result.status === 'success') {
+          console.log('[Aesop] New best result achieved!');
+          if (result.metrics) {
+            console.log(`[Aesop] Metrics: ${JSON.stringify(result.metrics)}`);
+          }
+          process.exit(0);
+        } else if (result.status === 'no_improvement') {
+          console.log('[Aesop] No improvement over previous best.');
+          process.exit(0);
+        } else {
+          console.log('[Aesop] Experiment failed.');
+          process.exit(1);
+        }
+      } catch (error) {
+        console.error('[Aesop] Error:', error instanceof Error ? error.message : String(error));
+        process.exit(1);
+      }
+    }
+  );
+
+// ============================================================================
+// INTERACTIVE COMMAND
+// ============================================================================
+
 program
   .command('interactive')
-  .description('Start interactive mode with embedded agent')
+  .description('Open an agent session for exploration and debugging')
   .action(async () => {
-    initAuth();
-
     const cwd = process.cwd();
-    const sessionManager = SessionManager.create(cwd);
 
     const createRuntime: CreateAgentSessionRuntimeFactory = async ({
       cwd: sessionCwd,
@@ -118,6 +289,8 @@ program
       };
     };
 
+    const sessionManager = SessionManager.inMemory(cwd);
+
     const runtime = await createAgentSessionRuntime(createRuntime, {
       cwd,
       agentDir: getAgentDir(),
@@ -127,7 +300,7 @@ program
     const mode = new InteractiveMode(runtime, {
       migratedProviders: [],
       modelFallbackMessage: '',
-      initialMessage: 'Welcome to Aesop! How can I help you run your ML experiments?',
+      initialMessage: 'Welcome to Aesop! This is an interactive session in your current directory.',
       initialImages: [],
       initialMessages: [],
     });
@@ -135,453 +308,36 @@ program
     await mode.run();
   });
 
-/**
- * Start the Aesop daemon with an objective (ephemeral workspace mode)
- */
+// ============================================================================
+// STATUS COMMAND
+// ============================================================================
+
 program
-  .command('start')
-  .description('Start the Aesop daemon with ephemeral workspace isolation')
-  .requiredOption('-o, --objective <text>', 'The experiment objective to pursue')
-  .requiredOption('-r, --target-repo <path>', 'Path to the target repository to sandbox')
+  .command('status')
+  .description('Show experiment history from the ledger')
   .addOption(
-    new Option('-w, --workspace-root <path>', 'Root directory for workspaces').default(
-      getDefaultWorkspaceRoot()
-    )
+    new Option('-l, --ledger-path <path>', 'Path to experiments.jsonl').default('experiments.jsonl')
   )
-  .addOption(
-    new Option('-c, --validate-cmd <command>', 'Validation command to run').default(
-      './aesop_validate.sh'
-    )
-  )
-  .action(
-    async (options: {
-      objective: string;
-      targetRepo: string;
-      workspaceRoot: string;
-      validateCmd: string;
-    }) => {
-      initAuth();
+  .addOption(new Option('--json', 'Output as JSON').default(false))
+  .action(async (options: { ledgerPath?: string; json?: boolean }) => {
+    const projectDir = process.cwd();
+    const ledgerPath = options.ledgerPath
+      ? resolve(projectDir, options.ledgerPath)
+      : join(projectDir, 'experiments.jsonl');
 
-      const controlPlaneOptions: ControlPlaneOptions = {
-        targetRepoPath: options.targetRepo,
-        workspaceRoot: options.workspaceRoot,
-        useEphemeralWorkspaces: true,
-        sessionManager: SessionManager.create(process.cwd()),
-        authStorage,
-        modelRegistry,
-        settingsManager: getConfiguredSettings(),
-        validateCmd: options.validateCmd,
-      };
-
-      console.log('[CLI] Starting Aesop with ephemeral workspace isolation');
-      console.log(`[CLI] Target repo: ${options.targetRepo}`);
-      console.log(`[CLI] Workspace root: ${options.workspaceRoot}`);
-      console.log('');
-
-      const { session, stop } = await startAesopDaemon(options.objective, controlPlaneOptions);
-
-      // Keep the session alive and log events
-      session.subscribe((event: AgentSessionEvent) => {
-        if (event.type === 'message_update' && event.assistantMessageEvent.type === 'text_delta') {
-          process.stdout.write(event.assistantMessageEvent.delta);
-        }
-        if (event.type === 'tool_execution_start') {
-          console.log(`\n[Tool] ${event.toolName}`);
-        }
-      });
-
-      // Handle cleanup on exit
-      process.on('SIGINT', () => {
-        console.log('\n[CLI] Shutting down...');
-        stop();
-        process.exit(0);
-      });
-    }
-  );
-
-/**
- * Run an experiment from a natural language prompt
- */
-program
-  .command('run <prompt>')
-  .description('Execute an experiment from a natural language prompt')
-  .addOption(new Option('-b, --branch <name>', 'Branch name for the experiment'))
-  .addOption(
-    new Option('-t, --target-repo <path>', 'Path to target repository (for ephemeral mode)')
-  )
-  .addOption(
-    new Option('-w, --workspace-root <path>', 'Root directory for workspaces').default(
-      getDefaultWorkspaceRoot()
-    )
-  )
-  .addOption(new Option('-e, --ephemeral', 'Use ephemeral workspace isolation').default(false))
-  .action(
-    async (
-      prompt: string,
-      options: {
-        branch?: string;
-        targetRepo?: string;
-        workspaceRoot?: string;
-        ephemeral?: boolean;
-      }
-    ) => {
-      initAuth();
-
-      if (options.ephemeral) {
-        const target = options.targetRepo ?? process.cwd();
-        // Run in ephemeral mode
-        console.log('[CLI] Running in ephemeral workspace mode');
-
-        const runOptions: ControlPlaneOptions & { branchName?: string } = {};
-        if (options.workspaceRoot) runOptions.workspaceRoot = options.workspaceRoot;
-        if (options.branch) runOptions.branchName = options.branch;
-
-        const result = await runEphemeralExperiment(prompt, target, runOptions);
-
-        if (!result.success) {
-          console.error(`[CLI] Error: ${result.error}`);
-          process.exit(1);
-        }
-
-        console.log(`[CLI] Session ID: ${result.sessionId}`);
-        console.log(`[CLI] Workspace path: ${result.workspacePath}`);
-        console.log(`[CLI] Base path: ${result.basePath}`);
-        console.log('[CLI] Use the workspace path above to edit files');
-      } else if (options.targetRepo) {
-        console.error('[CLI] Error: --target-repo can only be used with --ephemeral');
-        process.exit(1);
-      } else {
-        // Run in normal mode
-        const manager = new ExperimentManager(process.cwd());
-        await manager.createBranch('main', prompt, { literalName: options.branch });
-
-        const settingsManager = getConfiguredSettings();
-
-        const { session } = await createAgentSession({
-          sessionManager: SessionManager.inMemory(),
-          authStorage,
-          modelRegistry,
-          settingsManager,
-        });
-
-        console.log(`[Aesop] Running experiment: "${prompt}"`);
-
-        session.subscribe((event: AgentSessionEvent) => {
-          if (
-            event.type === 'message_update' &&
-            event.assistantMessageEvent.type === 'text_delta'
-          ) {
-            process.stdout.write(event.assistantMessageEvent.delta);
-          }
-          if (event.type === 'tool_execution_start') {
-            console.log(`\n[Tool] ${event.toolName}`);
-          }
-        });
-
-        await session.prompt(prompt);
-        console.log('\n[Aesop] Experiment completed.');
-      }
-    }
-  );
-
-/**
- * Create an experiment branch
- */
-program
-  .command('branch <hypothesis>')
-  .description('Create an experiment branch from a hypothesis')
-  .addOption(new Option('-f, --from <branch>', 'Base branch (default: main)').default('main'))
-  .addOption(
-    new Option('-t, --target-repo <path>', 'Path to target repository (for ephemeral mode)')
-  )
-  .addOption(
-    new Option('-w, --workspace-root <path>', 'Root directory for workspaces').default(
-      getDefaultWorkspaceRoot()
-    )
-  )
-  .addOption(new Option('-e, --ephemeral', 'Use ephemeral workspace isolation').default(false))
-  .action(
-    async (
-      hypothesis: string,
-      options: {
-        from?: string;
-        targetRepo?: string;
-        workspaceRoot?: string;
-        ephemeral?: boolean;
-      }
-    ) => {
-      if (options.ephemeral) {
-        const target = options.targetRepo ?? process.cwd();
-        // Create ephemeral workspace
-        console.log('[CLI] Creating ephemeral workspace for hypothesis');
-
-        const manager = new ExperimentManager(target, {
-          ephemeral: true,
-          workspaceRoot: options.workspaceRoot,
-        });
-        await manager.initEphemeralWorkspace(
-          target,
-          options.workspaceRoot ?? getDefaultWorkspaceRoot()
-        );
-        const workspacePath = await manager.createBranch(options.from ?? 'main', hypothesis);
-
-        console.log(`[Aesop] Created ephemeral workspace: ${workspacePath}`);
-      } else if (options.targetRepo) {
-        console.error('[CLI] Error: --target-repo can only be used with --ephemeral');
-        process.exit(1);
-      } else {
-        // Create local branch
-        const manager = new ExperimentManager(process.cwd());
-        const branch = await manager.createBranch(options.from ?? 'main', hypothesis);
-        console.log(`[Aesop] Created experiment branch: ${branch}`);
-      }
-    }
-  );
-
-/**
- * Dispatch an experiment to the available compute backend
- */
-program
-  .command('dispatch [branch]')
-  .description('Dispatch experiment to available compute backend')
-  .addOption(
-    new Option('-c, --cwd <path>', 'Working directory for the experiment').default(process.cwd())
-  )
-  .requiredOption(
-    '-r, --run-cmd <command>',
-    'Command to run on the compute backend (required for language-agnostic execution)'
-  )
-  .addOption(
-    new Option('--validate-cmd <command>', 'Validation command').default('./aesop_validate.sh')
-  )
-  .action(
-    async (
-      branch: string | undefined,
-      options: { cwd?: string; runCmd: string; validateCmd?: string }
-    ) => {
-      const currentBranch =
-        branch ??
-        (await new ExperimentManager(options.cwd ?? process.cwd()).getCurrentBranch()) ??
-        'main';
-
-      // Run local validation if requested
-      if (options.validateCmd) {
-        console.log(`[CLI] Validating branch ${currentBranch} locally...`);
-        const { runStaticChecks } = await import('./backpressureGates.js');
-        const checkResult = await runStaticChecks(
-          options.cwd ?? process.cwd(),
-          options.validateCmd
-        );
-        if (!checkResult.success) {
-          console.error(`[CLI] Local validation failed:\n${checkResult.errorOutput}`);
-          process.exit(1);
-        }
-        console.log(`[CLI] Local validation passed.`);
-      }
-
-      const adapter = await getActiveAdapter();
-      const runCmd = options.runCmd;
-
-      console.log(`[Aesop] Dispatching ${currentBranch} with command: "${runCmd}"...`);
-      const jobId = await adapter.submitJob(currentBranch, runCmd, options.cwd);
-
-      console.log(`[Aesop] Job submitted: ${jobId}`);
-      const status = await adapter.checkStatus(jobId);
-      console.log(`[Aesop] Status: ${status.status}`);
-    }
-  );
-
-/**
- * Check experiment status
- */
-program
-  .command('status [branch]')
-  .description('Show experiment status')
-  .addOption(
-    new Option('-w, --workspace-root <path>', 'Root directory for workspaces').default(
-      getDefaultWorkspaceRoot()
-    )
-  )
-  .addOption(new Option('-e, --ephemeral', 'Check ephemeral workspace status').default(false))
-  .action(
-    async (
-      branch: string | undefined,
-      options: { workspaceRoot?: string; ephemeral?: boolean }
-    ) => {
-      if (options.ephemeral) {
-        // List ephemeral workspaces
-        const { existsSync, readdirSync } = await import('node:fs');
-        const { join } = await import('node:path');
-
-        const workspaceRoot = options.workspaceRoot ?? getDefaultWorkspaceRoot();
-
-        if (!existsSync(workspaceRoot)) {
-          console.log(`[Aesop] No workspaces found at ${workspaceRoot}`);
-          return;
-        }
-
-        const sessions = readdirSync(workspaceRoot, { withFileTypes: true })
-          .filter((entry) => entry.isDirectory() && entry.name.startsWith('session_'))
-          .map((entry) => entry.name);
-
-        if (sessions.length === 0) {
-          console.log(`[Aesop] No active workspaces found`);
-          return;
-        }
-
-        console.log(`[Aesop] Active workspaces:`);
-        for (const session of sessions) {
-          const sessionPath = join(workspaceRoot, session);
-          const workspaces = readdirSync(sessionPath, { withFileTypes: true })
-            .filter((entry) => entry.isDirectory() && entry.name.startsWith('hyp_'))
-            .map((entry) => entry.name);
-
-          console.log(`  ${session}:`);
-          for (const ws of workspaces) {
-            console.log(`    - ${ws}`);
-          }
-        }
-      } else {
-        const manager = new ExperimentManager(process.cwd());
-        const currentBranch = branch ?? (await manager.getCurrentBranch()) ?? 'main';
-        const records = manager.getExperimentLog();
-
-        const branchRecords = records.filter((r) => r.branch === currentBranch);
-
-        if (branchRecords.length === 0) {
-          console.log(`[Aesop] No experiments found for branch: ${currentBranch}`);
-          return;
-        }
-
-        console.log(`[Aesop] Experiments for branch "${currentBranch}":`);
-        for (const record of branchRecords) {
-          console.log(
-            `  ${record.timestamp} - ${record.status} - ${record.commitHash.slice(0, 7)}`
-          );
-        }
-      }
-    }
-  );
-
-/**
- * Merge experiment branch
- */
-program
-  .command('merge <source> <target>')
-  .description('Merge experiment branch to target')
-  .addOption(
-    new Option('-w, --workspace-root <path>', 'Root directory for workspaces').default(
-      getDefaultWorkspaceRoot()
-    )
-  )
-  .addOption(new Option('-e, --ephemeral', 'Merge from ephemeral workspace to base').default(false))
-  .addOption(new Option('-p, --push', 'Push merged changes to original repository').default(false))
-  .action(
-    async (
-      source: string,
-      target: string,
-      options: {
-        workspaceRoot?: string;
-        ephemeral?: boolean;
-        push?: boolean;
-      }
-    ) => {
-      const workspaceRoot = options.workspaceRoot ?? getDefaultWorkspaceRoot();
-
-      if (options.ephemeral) {
-        // Try to detect if we're inside an ephemeral workspace
-        const { parseEphemeralWorkspace, WorkspaceManager } = await import('./workspaceManager.js');
-        const workspaceInfo = parseEphemeralWorkspace(workspaceRoot);
-
-        if (!workspaceInfo) {
-          console.error(
-            `[CLI] Not inside an ephemeral workspace. Run this command from within an ephemeral workspace directory.`
-          );
-          console.error(`[CLI] Expected path pattern: ${workspaceRoot}/session_xxx/hyp_yyy/`);
-          process.exit(1);
-        }
-
-        console.log(`[CLI] Detected ephemeral workspace: ${workspaceInfo.sessionId}`);
-        console.log(`[CLI] Hypothesis: ${workspaceInfo.hypothesisName}`);
-
-        // Create WorkspaceManager targeting the existing session
-        const wm = new WorkspaceManager(
-          workspaceRoot,
-          workspaceInfo.hypothesisPath,
-          false,
-          workspaceInfo.sessionId
-        );
-
-        console.log(`[Aesop] Merging ${source} into base workspace...`);
-        const success = await wm.mergeIntoBase(source, target);
-
-        if (success) {
-          console.log(`[Aesop] Successfully merged ${source} into base`);
-          if (options.push) {
-            console.log('[Aesop] Note: Set up git remote in base to push changes');
-          }
-        } else {
-          console.error('[Aesop] Merge failed - conflicts detected');
-          process.exit(1);
-        }
-      } else {
-        const manager = new ExperimentManager(process.cwd());
-        const success = await manager.mergeBranch(source, target);
-
-        if (success) {
-          console.log(`[Aesop] Successfully merged ${source} into ${target}`);
-        } else {
-          console.error('[Aesop] Merge failed - conflicts detected');
-          process.exit(1);
-        }
-      }
-    }
-  );
-
-/**
- * Clean up ephemeral workspaces
- */
-program
-  .command('cleanup')
-  .description('Clean up ephemeral workspaces')
-  .addOption(
-    new Option('-w, --workspace-root <path>', 'Root directory for workspaces').default(
-      getDefaultWorkspaceRoot()
-    )
-  )
-  .addOption(new Option('--dry-run', 'Show what would be deleted without deleting').default(false))
-  .action(async (options: { workspaceRoot?: string; dryRun?: boolean }) => {
-    const { existsSync, readdirSync, rmSync } = await import('node:fs');
-
-    const workspaceRoot = options.workspaceRoot ?? getDefaultWorkspaceRoot();
-
-    if (!existsSync(workspaceRoot)) {
-      console.log(`[Aesop] No workspaces found at ${workspaceRoot}`);
+    if (!existsSync(ledgerPath)) {
+      console.log('No experiments found. Run `aesop run "<hypothesis>"` to start.');
       return;
     }
 
-    const sessions = readdirSync(workspaceRoot, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && entry.name.startsWith('session_'))
-      .map((entry) => entry.name);
+    const ledger = new LedgerManager({ ledgerPath });
+    const entries = ledger.readAll();
 
-    if (sessions.length === 0) {
-      console.log(`[Aesop] No workspaces to clean up`);
-      return;
+    if (options.json) {
+      printStatusJson(entries);
+    } else {
+      printStatusTable(entries);
     }
-
-    console.log(`[Aesop] Found ${sessions.length} workspace(s) to clean up:`);
-    for (const session of sessions) {
-      console.log(`  - ${session}`);
-    }
-
-    if (options.dryRun) {
-      console.log('\n[CLI] Dry run - no changes made');
-      return;
-    }
-
-    console.log('\n[CLI] Cleaning up workspaces...');
-    rmSync(workspaceRoot, { recursive: true, force: true });
-    console.log('[Aesop] All workspaces cleaned up');
   });
 
 program.parse();
