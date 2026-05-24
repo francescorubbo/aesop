@@ -68,7 +68,9 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Run validate script
+      - name: Run experiment
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: ./aesop_validate.sh
+        run: |
+          export PATH="$PWD/node_modules/.bin:$HOME/.local/bin:$PATH"
+          aesop run "Add one more hidden layer with 256 neurons to improve accuracy"
