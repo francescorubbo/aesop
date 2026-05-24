@@ -19,6 +19,7 @@ import {
   ModelRegistry,
   SessionManager,
 } from '@earendil-works/pi-coding-agent';
+import { getModel } from '@earendil-works/pi-ai';
 
 import { WorkspaceManager } from './workspaceManager.js';
 import { runWithValidation } from './validateContract.js';
@@ -136,6 +137,7 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
     hypothesis,
     validateCmd,
     metricKey,
+    model,
     maxIterations = 20,
     ledgerPath: ledgerPathOverride,
     onLog = () => {
@@ -201,12 +203,30 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
     }
     const modelRegistry = ModelRegistry.create(authStorage);
 
+    // Resolve model if provided (format: "provider/model-id")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let resolvedModel: any = undefined;
+    if (model) {
+      const parts = model.split('/');
+      if (parts.length === 2 && parts[0] && parts[1]) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const foundModel = getModel(parts[0] as any, parts[1]);
+        if (foundModel) {
+          log(`Using model: ${model}`);
+          resolvedModel = foundModel;
+        } else {
+          log(`Warning: Model ${model} not found, using default`);
+        }
+      }
+    }
+
     const { session } = await createAgentSession({
       cwd: workspace.path,
       sessionManager: SessionManager.inMemory(workspace.path),
       resourceLoader: agentResourceLoader,
       authStorage,
       modelRegistry,
+      model: resolvedModel,
       tools: ['read', 'bash', 'edit', 'write'],
     });
 

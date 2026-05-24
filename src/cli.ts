@@ -233,6 +233,7 @@ program
           validateCmd,
           metricKey: metric,
           maxIterations,
+          ...(model ? { model } : {}),
           onLog: (msg) => {
             console.log(msg);
           },
