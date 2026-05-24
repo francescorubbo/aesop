@@ -203,6 +203,8 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
     }
     const modelRegistry = ModelRegistry.create(authStorage);
 
+    log(`Model option from config: ${model ?? 'none'}`);
+
     // Resolve model if provided (format: "provider/model-id")
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let resolvedModel: any = undefined;
@@ -212,11 +214,13 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const foundModel = getModel(parts[0] as any, parts[1]);
         if (foundModel) {
-          log(`Using model: ${model}`);
+          log(`Using model: ${model} (${foundModel.id})`);
           resolvedModel = foundModel;
         } else {
           log(`Warning: Model ${model} not found, using default`);
         }
+      } else {
+        log(`Warning: Model string "${model}" not in "provider/model-id" format, using default`);
       }
     }
 
