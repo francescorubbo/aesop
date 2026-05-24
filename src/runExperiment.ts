@@ -12,9 +12,11 @@
 
 import { resolve, join } from 'node:path';
 import {
+  AuthStorage,
   createAgentSession,
   DefaultResourceLoader,
   getAgentDir,
+  ModelRegistry,
   SessionManager,
 } from '@earendil-works/pi-coding-agent';
 
@@ -190,10 +192,21 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
     // =====================================================================
     log(`Starting agent with maxIterations=${maxIterations}...`);
 
+    const authStorage = AuthStorage.create();
+    if (process.env['GEMINI_API_KEY']) {
+      authStorage.setRuntimeApiKey('google', process.env['GEMINI_API_KEY']!);
+    }
+    if (process.env['ANTHROPIC_API_KEY']) {
+      authStorage.setRuntimeApiKey('anthropic', process.env['ANTHROPIC_API_KEY']!);
+    }
+    const modelRegistry = ModelRegistry.create(authStorage);
+
     const { session } = await createAgentSession({
       cwd: workspace.path,
       sessionManager: SessionManager.inMemory(workspace.path),
       resourceLoader: agentResourceLoader,
+      authStorage,
+      modelRegistry,
       tools: ['read', 'bash', 'edit', 'write'],
     });
 
@@ -224,7 +237,11 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
       }
     }
 
-    log(`Agent finished after ${iterationCount} iterations`);
+    log(`Agent finished after ${iterationCount} iterations, disposing session...`);
+
+    // Dispose the session
+    session.dispose();
+    log('Session disposed');
 
     // =====================================================================
     // STEP 5: Validate results

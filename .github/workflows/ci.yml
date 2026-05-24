@@ -66,8 +66,8 @@ jobs:
 
       - name: Run experiment
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         run: |
           cd examples/mnist
-          node ../../dist/cli.js run "Add one more hidden layer with 256 neurons to improve accuracy"
+          node ../../dist/cli.js run --max-iterations 2 "Add one more hidden layer with 256 neurons to improve accuracy"
         working-directory: .
