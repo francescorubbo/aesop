@@ -1,18 +1,24 @@
 #!/usr/bin/env bash
-# examples/mnist/aesop_validate.sh
-
-# Exit immediately if a task exits with a non-zero status.
 set -e
 
-echo "Running static backpressure gates..."
-# 1. Check for syntax errors and undefined variables
+echo "Running static checks..."
 uvx ruff check train.py
-
-# 2. Check type hints (optional for this simple script, but good practice)
 uvx ty check train.py
 
-echo "Static checks passed. Executing experiment..."
-# 3. Run the training script (which generates eval_result.json)
+echo "Running training..."
+rm -f eval_result.json   # belt-and-suspenders; harness also does this
 uv run python train.py
 
-echo "Experiment execution finished successfully."
+echo "Verifying results..."
+python - <<'EOF'
+import json, os, time, sys
+path = "eval_result.json"
+if not os.path.exists(path):
+    sys.exit("eval_result.json was not written")
+age = time.time() - os.path.getmtime(path)
+if age > 120:
+    sys.exit(f"eval_result.json is stale ({age:.0f}s old)")
+result = json.load(open(path))
+assert "accuracy" in result, "missing accuracy key"
+print(f"accuracy={result['accuracy']:.4f}")
+EOF

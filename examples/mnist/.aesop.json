@@ -1,0 +1,9 @@
+{
+  "validate": {
+    "cmd": "./aesop_validate.sh",
+    "metricKey": "accuracy"
+  },
+  "agent": {
+    "model": "anthropic/claude-sonnet-4-20250514"
+  }
+}
