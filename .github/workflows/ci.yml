@@ -70,7 +70,7 @@ jobs:
 
       - name: Run experiment
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         run: |
           export PATH="$PWD/node_modules/.bin:$HOME/.local/bin:$PATH"
           aesop run "Add one more hidden layer with 256 neurons to improve accuracy"
