@@ -35,3 +35,39 @@ jobs:
 
       - name: Test
         run: npm run test:coverage
+
+  mnist-example:
+    name: MNIST Example Integration
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm run build
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Python and MNIST dependencies
+        run: uv sync
+        working-directory: examples/mnist
+
+      - name: Run experiment
+        env:
+          GEMINI_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        run: |
+          cd examples/mnist
+          node ../../dist/cli.js run --max-iterations 1 "Add a ReLU activation after the first linear layer"
+        working-directory: .

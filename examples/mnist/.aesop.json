@@ -1,0 +1,10 @@
+{
+  "validate": {
+    "cmd": "./aesop_validate.sh",
+    "metricKey": "accuracy"
+  },
+  "maxIterations": 10,
+  "agent": {
+    "model": "google/gemma-4-31b-it"
+  }
+}
