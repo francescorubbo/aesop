@@ -61,9 +61,7 @@ jobs:
           enable-cache: true
 
       - name: Install Python and MNIST dependencies
-        run: |
-          uv python install 3.13
-          uv sync
+        run: uv sync
         working-directory: examples/mnist
 
       - name: Run experiment
