@@ -55,15 +55,15 @@ jobs:
           npm ci
           npm run build
 
-      - name: Install Python and uv
-        uses: actions/setup-python@v5
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: '3.13'
-      - name: Install uv
-        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+          enable-cache: true
 
-      - name: Install MNIST dependencies
-        run: uv sync
+      - name: Install Python and MNIST dependencies
+        run: |
+          uv python install 3.13
+          uv sync
         working-directory: examples/mnist
 
       - name: Run experiment
