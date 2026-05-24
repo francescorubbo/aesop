@@ -39,9 +39,6 @@ jobs:
   mnist-example:
     name: MNIST Example Integration
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: examples/mnist
 
     steps:
       - name: Checkout
@@ -52,21 +49,26 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-        working-directory: .
 
       - name: Build CLI
-        run: npm install && npm run build
+        run: |
+          npm install
+          npm run build
+        working-directory: .
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+        working-directory: examples/mnist
 
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
+        working-directory: examples/mnist
 
       - name: Install dependencies
         run: uv sync
+        working-directory: examples/mnist
 
       - name: Run experiment
         env:
@@ -74,3 +76,4 @@ jobs:
         run: |
           export PATH="$PWD/node_modules/.bin:$HOME/.local/bin:$PATH"
           aesop run "Add one more hidden layer with 256 neurons to improve accuracy"
+        working-directory: examples/mnist
