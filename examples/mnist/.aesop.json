@@ -4,6 +4,6 @@
     "metricKey": "accuracy"
   },
   "agent": {
-    "model": "anthropic/claude-sonnet-4-20250514"
+    "model": "google/gemma-4-31b-it"
   }
 }
