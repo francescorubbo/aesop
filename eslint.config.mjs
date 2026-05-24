@@ -30,6 +30,15 @@ const eslintConfig = [
       'no-console': 'off',
     },
   },
+  // validateContract.ts exports an enum for public API use - enum values are consumed by tests
+  {
+    files: ['src/validateContract.ts'],
+    rules: {
+      '@typescript-eslint/no-unused-vars': 'off',
+      'no-unused-vars': 'off',
+    },
+  },
+  // Prettier must be last to disable conflicting rules
   eslintConfigPrettier,
 ];
 
