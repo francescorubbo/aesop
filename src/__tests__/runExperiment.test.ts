@@ -370,6 +370,22 @@ exit 1
       expect(entry.durationMs).toBeGreaterThanOrEqual(0);
     });
 
+    it('should record a non-empty hypothesis commit hash on success', async () => {
+      const result = await runExperiment({
+        projectDir: projectPath,
+        hypothesis: 'commit-hash-test',
+        validateCmd: './validate.sh',
+        metricKey: 'accuracy',
+        maxIterations: 1,
+      });
+
+      if (result.status !== 'failure') {
+        expect(result.ledgerEntry.hypothesisCommit).toBeDefined();
+        expect(result.ledgerEntry.hypothesisCommit.length).toBeGreaterThan(0);
+        expect(result.ledgerEntry.hypothesisCommit).toMatch(/^[a-f0-9]+$/);
+      }
+    });
+
     it('should include error message on validation failure', async () => {
       // Create a failing validate script
       const failingScript = `#!/bin/bash
