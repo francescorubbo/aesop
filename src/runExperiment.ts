@@ -325,16 +325,11 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
     // =====================================================================
     let hypothesisCommit = '';
     try {
-      const git = workspaceManager.getGit();
-      const branchStatus = await git.branchLocal();
-      const currentBranch = branchStatus.current;
-      if (currentBranch) {
-        const logResult = await git
-          .log({ maxCount: 1, from: branchName, to: branchName })
-          .catch(() => null);
-        if (logResult?.all?.[0]?.hash) {
-          hypothesisCommit = logResult.all[0].hash;
-        }
+      const hash = await workspaceManager.getGit()
+        .revparse([branchName])
+        .catch(() => null);
+      if (hash) {
+        hypothesisCommit = hash.trim();
       }
     } catch {
       // Ignore commit hash errors - ledger entry will have empty commit
