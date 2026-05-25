@@ -73,18 +73,12 @@ describe('createSandboxExtension', () => {
     });
 
     it('blocks commands that read from paths outside workspace', async () => {
-      const result = await handler(
-        makeEvent('bash', { command: 'cat /etc/passwd' }),
-        {}
-      );
+      const result = await handler(makeEvent('bash', { command: 'cat /etc/passwd' }), {});
       expect(result).toMatchObject({ block: true });
     });
 
     it('blocks cd to paths outside workspace', async () => {
-      const result = await handler(
-        makeEvent('bash', { command: 'cd /tmp && ls' }),
-        {}
-      );
+      const result = await handler(makeEvent('bash', { command: 'cd /tmp && ls' }), {});
       expect(result).toMatchObject({ block: true });
     });
 
@@ -97,10 +91,7 @@ describe('createSandboxExtension', () => {
     });
 
     it('allows commands with no path arguments', async () => {
-      const result = await handler(
-        makeEvent('bash', { command: 'ls -la' }),
-        {}
-      );
+      const result = await handler(makeEvent('bash', { command: 'ls -la' }), {});
       expect(result).toBeUndefined();
     });
 
@@ -119,19 +110,13 @@ describe('createSandboxExtension', () => {
 
   describe('file tools', () => {
     it('blocks read tool with path outside workspace', async () => {
-      const result = await handler(
-        makeEvent('read', { path: '/etc/passwd' }),
-        {}
-      );
+      const result = await handler(makeEvent('read', { path: '/etc/passwd' }), {});
       expect(result).toMatchObject({ block: true });
       expect(result.reason).toContain('read');
     });
 
     it('allows read tool with relative path inside workspace', async () => {
-      const result = await handler(
-        makeEvent('read', { path: 'train.py' }),
-        {}
-      );
+      const result = await handler(makeEvent('read', { path: 'train.py' }), {});
       expect(result).toBeUndefined();
     });
 
@@ -144,26 +129,17 @@ describe('createSandboxExtension', () => {
     });
 
     it('blocks write tool with path outside workspace', async () => {
-      const result = await handler(
-        makeEvent('write', { path: '/tmp/evil.txt', content: 'x' }),
-        {}
-      );
+      const result = await handler(makeEvent('write', { path: '/tmp/evil.txt', content: 'x' }), {});
       expect(result).toMatchObject({ block: true });
     });
 
     it('blocks edit tool with path that escapes via ..', async () => {
-      const result = await handler(
-        makeEvent('edit', { path: '../other-project/config.py' }),
-        {}
-      );
+      const result = await handler(makeEvent('edit', { path: '../other-project/config.py' }), {});
       expect(result).toMatchObject({ block: true });
     });
 
     it('blocks ls tool with path outside workspace', async () => {
-      const result = await handler(
-        makeEvent('ls', { path: '/tmp' }),
-        {}
-      );
+      const result = await handler(makeEvent('ls', { path: '/tmp' }), {});
       expect(result).toMatchObject({ block: true });
     });
   });
@@ -174,18 +150,12 @@ describe('createSandboxExtension', () => {
 
   describe('unknown tools', () => {
     it('passes through unknown tools without blocking', async () => {
-      const result = await handler(
-        makeEvent('some_custom_tool', { anything: 'value' }),
-        {}
-      );
+      const result = await handler(makeEvent('some_custom_tool', { anything: 'value' }), {});
       expect(result).toBeUndefined();
     });
 
     it('passes through tools with no path arguments', async () => {
-      const result = await handler(
-        makeEvent('grep', {}),
-        {}
-      );
+      const result = await handler(makeEvent('grep', {}), {});
       expect(result).toBeUndefined();
     });
   });

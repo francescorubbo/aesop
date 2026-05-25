@@ -325,7 +325,8 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
     // =====================================================================
     let hypothesisCommit = '';
     try {
-      const hash = await workspaceManager.getGit()
+      const hash = await workspaceManager
+        .getGit()
         .revparse([branchName])
         .catch(() => null);
       if (hash) {
