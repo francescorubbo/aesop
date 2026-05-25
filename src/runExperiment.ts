@@ -241,28 +241,43 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
 
     agentSession = session;
 
+    log('Agent session created, starting interaction loop...');
+
     // Run the agent with iteration budget by running prompt multiple times
     // until maxIterations is reached or the agent signals completion
     let iterationCount = 0;
 
-    while (iterationCount < maxIterations) {
-      iterationCount++;
-      log(`Iteration ${iterationCount}/${maxIterations}`);
+    for (let i = 0; i < maxIterations; i++) {
+      log(`Agent iteration ${i + 1}/${maxIterations}`);
+      await session.prompt(`Iteration ${i + 1}. Improve ${metricKey}, then run: ${validateCmd}.`);
 
-      // The agent runs until user prompt returns
-      await session.prompt(
-        `Iteration ${iterationCount}. Make changes to improve the ${metricKey} metric, ` +
-          `then run: ${validateCmd}. ` +
-          `Stop when you have achieved a good result.`
-      );
-
-      log(`Agent turn ${iterationCount} complete`);
-
-      // For now, run all iterations - the agent decides when to stop
-      // In a future enhancement, the agent could signal completion via a tool result
-      if (iterationCount >= maxIterations) {
-        log('Reached max iterations, stopping agent');
-        break;
+      log('Running validation after agent iteration...');
+      const interim = await runWithValidation(workspace.path, validateCmd, metricKey);
+      if (interim.success) {
+        log(`Validation succeeded. Metrics: ${JSON.stringify(interim.metrics)}`);
+        const value = interim.metrics[metricKey];
+        if (value === undefined) {
+          log(
+            `Warning: Metric ${metricKey} not found in validation results. Skipping ratchet check.`
+          );
+          await session.prompt(
+            `Validation succeeded but metric ${metricKey} not found. Fix the validate command output and try again.`
+          );
+          continue;
+        }
+        const ratchet = checkRatchet(ledgerPath, metricKey, value);
+        if (ratchet.improved) {
+          log(`Target reached: ${metricKey}=${value}. Stopping early.`);
+          break;
+        }
+        log(
+          `No improvement yet: ${metricKey}=${value} (best so far: ${ratchet.best}). Continuing...`
+        );
+        await session.prompt(
+          `Validation result: ${metricKey}=${value} (best so far: ${ratchet.best}). Keep improving.`
+        );
+      } else {
+        await session.prompt(`Validation failed: ${interim.error}. Fix the issue and try again.`);
       }
     }
 
