@@ -4,5 +4,9 @@ dist/
 .DS_Store
 coverage/
 
-# Aesop ephemeral workspaces
+# Aesop workspaces and managed repos
+.aesop/
 .aesop_workspaces/
+
+# Example data
+examples/mnist/data/
