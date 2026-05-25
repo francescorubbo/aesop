@@ -54,6 +54,11 @@ export interface RunExperimentOptions {
    * Called with status updates during experiment execution.
    */
   onLog?: (_message: string) => void;
+  /**
+   * Whether to force recreate the ephemeral workspace if it already exists.
+   * Default: false
+   */
+  force?: boolean;
 }
 
 /**
@@ -144,6 +149,7 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
     onLog = () => {
       /* noop */
     },
+    force = false,
   } = options;
 
   const startTime = Date.now();
@@ -174,7 +180,7 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
     // STEP 2: Create ephemeral workspace
     // =====================================================================
     log(`Creating ephemeral workspace for branch: ${branchName}`);
-    workspace = await workspaceManager.createEphemeralWorkspace(branchName);
+    workspace = await workspaceManager.createEphemeralWorkspace(branchName, { force });
     log(`Workspace created at: ${workspace.path}`);
 
     // =====================================================================

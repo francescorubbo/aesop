@@ -195,6 +195,7 @@ program
     )
   )
   .addOption(new Option('--model <model>', 'Model override for the agent'))
+  .addOption(new Option('--force', 'Force recreate the ephemeral workspace if it exists'))
   .action(
     async (
       hypothesis: string,
@@ -203,6 +204,7 @@ program
         metric?: string;
         maxIterations?: string;
         model?: string;
+        force?: boolean;
       }
     ) => {
       const projectDir = process.cwd();
@@ -240,6 +242,7 @@ program
           validateCmd,
           metricKey: metric,
           maxIterations,
+          force: !!options.force,
           ...(model ? { model } : {}),
           onLog: (msg) => {
             console.log(msg);
