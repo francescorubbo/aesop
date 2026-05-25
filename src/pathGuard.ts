@@ -29,7 +29,69 @@ export interface PathCheckResult {
 }
 
 /**
+ * Internal helper to detect paths in a bash command that escape the workspace boundary.
+ * Returns a list of all detected violations.
+ */
+function detectViolations(command: string, workspacePath: string): string[] {
+  const escapedPaths: string[] = [];
+
+  // Pattern for redirection: > path, >> path, 2> path, &> path
+  // Captures: >, >>, 2>, &>, 1>, 2>>, &>>
+  const redirectionPattern = /(?:[12]?&?>+|&>)\s*(\S+)/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = redirectionPattern.exec(command)) !== null) {
+    const targetPath = match[1]!;
+    if (targetPath.startsWith('-')) {
+      // Flag, not a path (e.g., 2>&1)
+      continue;
+    }
+    const result = isPathInWorkspace(targetPath, workspacePath);
+    if (!result.allowed) {
+      escapedPaths.push(targetPath);
+    }
+  }
+
+  // Pattern for cd command
+  const cdPattern = /\bcd\s+(['"]?)(\S+)\1/g;
+  while ((match = cdPattern.exec(command)) !== null) {
+    const targetPath = match[2]!;
+    // Skip special cd targets
+    if (targetPath === '' || targetPath === '~' || targetPath === '-') {
+      continue;
+    }
+    const result = isPathInWorkspace(targetPath, workspacePath);
+    if (!result.allowed) {
+      escapedPaths.push(targetPath);
+    }
+  }
+
+  // Pattern for absolute paths in various command contexts
+  const safePrefixes = ['/usr/bin', '/usr/local/bin', '/bin', '/sbin', '/dev', '/proc', '/sys'];
+  const absolutePathPattern = /(?<![a-zA-Z0-9_.\-\/])(?:\/(?!\/)[^\s'"(]+)/g;
+  while ((match = absolutePathPattern.exec(command)) !== null) {
+    const absolutePath = match[0]!;
+    // Skip common safe system directories
+    if (
+      safePrefixes.some(
+        (prefix) => absolutePath.startsWith(prefix + '/') || absolutePath === prefix
+      )
+    ) {
+      continue;
+    }
+    // Check if it's an absolute path that could be a project file
+    const result = isPathInWorkspace(absolutePath, workspacePath);
+    if (!result.allowed) {
+      escapedPaths.push(absolutePath);
+    }
+  }
+
+  return escapedPaths;
+}
+
+/**
  * Check if a path is within the workspace boundary.
+
  * Resolves relative paths against the workspace and checks containment.
  */
 export function isPathInWorkspace(filePath: string, workspacePath: string): PathCheckResult {
@@ -71,65 +133,19 @@ export function isPathInWorkspace(filePath: string, workspacePath: string): Path
  * - Commands that reference absolute paths outside workspace
  */
 export function checkBashCommandSafe(command: string, workspacePath: string): PathCheckResult {
-  const resolvedWorkspace = resolve(workspacePath);
+  const escaped = detectViolations(command, workspacePath);
 
-  // Pattern for redirection: > path, >> path, 2> path, &> path
-  // Captures: >, >>, 2>, &>, 1>, 2>>, &>>
-  const redirectionPattern = /(?:[12]?&?>+|&>)\s*(\S+)/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = redirectionPattern.exec(command)) !== null) {
-    const targetPath = match[1]!;
-    if (targetPath.startsWith('-')) {
-      // Flag, not a path (e.g., 2>&1)
-      continue;
-    }
-    const result = isPathInWorkspace(targetPath, workspacePath);
-    if (!result.allowed) {
-      return result;
-    }
-  }
-
-  // Pattern for cd command
-  const cdPattern = /\bcd\s+(['"]?)(\S+)\1/g;
-  while ((match = cdPattern.exec(command)) !== null) {
-    const targetPath = match[2]!;
-    // Skip special cd targets
-    if (targetPath === '' || targetPath === '~' || targetPath === '-') {
-      continue;
-    }
-    const result = isPathInWorkspace(targetPath, workspacePath);
-    if (!result.allowed) {
-      return result;
-    }
-  }
-
-  // Pattern for absolute paths in various command contexts
-  // This catches things like: cat /path/to/file, cp /path /other, etc.
-  // Note: /etc is NOT safe - it can contain sensitive system config files
-  const absolutePathPattern = /(?<![a-zA-Z0-9_.\-\/])(?:\/(?!\/)[^\s'"(]+)/g;
-  while ((match = absolutePathPattern.exec(command)) !== null) {
-    const absolutePath = match[0]!;
-    // Skip common safe system directories (binaries, not user data files)
-    // Note: /etc is NOT safe - it contains system configuration
-    const safePrefixes = ['/usr/bin', '/usr/local/bin', '/bin', '/sbin', '/dev', '/proc', '/sys'];
-    if (
-      safePrefixes.some(
-        (prefix) => absolutePath.startsWith(prefix + '/') || absolutePath === prefix
-      )
-    ) {
-      continue;
-    }
-    // Check if it's an absolute path that could be a project file
-    const result = isPathInWorkspace(absolutePath, workspacePath);
-    if (!result.allowed) {
-      return result;
-    }
+  if (escaped.length === 0) {
+    return {
+      allowed: true,
+      path: resolve(workspacePath),
+    };
   }
 
   return {
-    allowed: true,
-    path: resolvedWorkspace,
+    allowed: false,
+    path: escaped[0]!,
+    error: `Command accesses paths outside workspace: ${escaped.join(', ')}`,
   };
 }
 
@@ -149,49 +165,7 @@ export interface BashEscapeCheckResult {
  * Returns detailed information about any detected escapes.
  */
 export function analyzeBashCommand(command: string, workspacePath: string): BashEscapeCheckResult {
-  const escapedPaths: string[] = [];
-
-  // Check redirections
-  const redirectionPattern = /(?:[12]?&?>+|&>)\s*(\S+)/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = redirectionPattern.exec(command)) !== null) {
-    const targetPath = match[1]!;
-    if (targetPath.startsWith('-')) continue;
-    const result = isPathInWorkspace(targetPath, workspacePath);
-    if (!result.allowed) {
-      escapedPaths.push(targetPath);
-    }
-  }
-
-  // Check cd commands
-  const cdPattern = /\bcd\s+(['"]?)(\S+)\1/g;
-  while ((match = cdPattern.exec(command)) !== null) {
-    const targetPath = match[2]!;
-    if (targetPath === '' || targetPath === '~' || targetPath === '-') continue;
-    const result = isPathInWorkspace(targetPath, workspacePath);
-    if (!result.allowed) {
-      escapedPaths.push(targetPath);
-    }
-  }
-
-  // Check absolute paths (excluding safe system directories)
-  const safePrefixes = ['/usr/bin', '/usr/local/bin', '/bin', '/sbin', '/dev', '/proc', '/sys'];
-  const absolutePathPattern = /(?<![a-zA-Z0-9_.\-\/])(?:\/(?!\/)[^\s'"(]+)/g;
-  while ((match = absolutePathPattern.exec(command)) !== null) {
-    const absolutePath = match[0]!;
-    if (
-      safePrefixes.some(
-        (prefix) => absolutePath.startsWith(prefix + '/') || absolutePath === prefix
-      )
-    ) {
-      continue;
-    }
-    const result = isPathInWorkspace(absolutePath, workspacePath);
-    if (!result.allowed) {
-      escapedPaths.push(absolutePath);
-    }
-  }
+  const escapedPaths = detectViolations(command, workspacePath);
 
   if (escapedPaths.length > 0) {
     return {
