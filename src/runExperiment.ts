@@ -257,7 +257,9 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
         log(`Validation succeeded. Metrics: ${JSON.stringify(interim.metrics)}`);
         const value = interim.metrics[metricKey];
         if (value === undefined) {
-          log(`Warning: Metric ${metricKey} not found in validation results. Skipping ratchet check.`);
+          log(
+            `Warning: Metric ${metricKey} not found in validation results. Skipping ratchet check.`
+          );
           await session.prompt(
             `Validation succeeded but metric ${metricKey} not found. Fix the validate command output and try again.`
           );
@@ -268,7 +270,9 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
           log(`Target reached: ${metricKey}=${value}. Stopping early.`);
           break;
         }
-        log(`No improvement yet: ${metricKey}=${value} (best so far: ${ratchet.best}). Continuing...`);
+        log(
+          `No improvement yet: ${metricKey}=${value} (best so far: ${ratchet.best}). Continuing...`
+        );
         await session.prompt(
           `Validation result: ${metricKey}=${value} (best so far: ${ratchet.best}). Keep improving.`
         );
