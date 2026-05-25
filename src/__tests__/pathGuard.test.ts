@@ -7,7 +7,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { mkdirSync } from 'node:fs';
@@ -52,7 +52,10 @@ function getToolResultError(result: AgentToolResult<unknown>): string | undefine
 }
 
 describe('isPathInWorkspace', () => {
-  const workspacePath = createTestWorkspace('isPathInWorkspace');
+  let workspacePath: string;
+  beforeEach(() => {
+    workspacePath = createTestWorkspace('isPathInWorkspace');
+  });
 
   it('should allow paths within workspace', () => {
     expect(isPathInWorkspace('src/file.py', workspacePath).allowed).toBe(true);
@@ -93,7 +96,10 @@ describe('isPathInWorkspace', () => {
 });
 
 describe('checkBashCommandSafe', () => {
-  const workspacePath = createTestWorkspace('checkBashCommandSafe');
+  let workspacePath: string;
+  beforeEach(() => {
+    workspacePath = createTestWorkspace('checkBashCommandSafe');
+  });
 
   it('should allow safe bash commands', () => {
     expect(checkBashCommandSafe('ls', workspacePath).allowed).toBe(true);
@@ -158,7 +164,10 @@ describe('checkBashCommandSafe', () => {
 });
 
 describe('analyzeBashCommand', () => {
-  const workspacePath = createTestWorkspace('analyzeBashCommand');
+  let workspacePath: string;
+  beforeEach(() => {
+    workspacePath = createTestWorkspace('analyzeBashCommand');
+  });
 
   it('should report safe commands', () => {
     const result = analyzeBashCommand('ls -la', workspacePath);
@@ -182,7 +191,10 @@ describe('analyzeBashCommand', () => {
 });
 
 describe('withPathGuard', () => {
-  const workspacePath = createTestWorkspace('withPathGuard');
+  let workspacePath: string;
+  beforeEach(() => {
+    workspacePath = createTestWorkspace('withPathGuard');
+  });
 
   it('should pass through allowed tool executions', async () => {
     // Create a mock tool with proper interface
@@ -337,7 +349,10 @@ describe('withPathGuard', () => {
 });
 
 describe('withPathGuards', () => {
-  const workspacePath = createTestWorkspace('withPathGuards');
+  let workspacePath: string;
+  beforeEach(() => {
+    workspacePath = createTestWorkspace('withPathGuards');
+  });
 
   it('should wrap multiple tools', () => {
     const tools: AgentTool[] = [
@@ -392,7 +407,10 @@ describe('withPathGuards', () => {
 });
 
 describe('createGuardedTools', () => {
-  const workspacePath = createTestWorkspace('createGuardedTools');
+  let workspacePath: string;
+  beforeEach(() => {
+    workspacePath = createTestWorkspace('createGuardedTools');
+  });
 
   it('should wrap provided tools with guards', () => {
     const originalTools: AgentTool[] = [
@@ -446,7 +464,10 @@ describe('createGuardedTools', () => {
 });
 
 describe('edge cases', () => {
-  const workspacePath = createTestWorkspace('edgeCases');
+  let workspacePath: string;
+  beforeEach(() => {
+    workspacePath = createTestWorkspace('edgeCases');
+  });
 
   it('should handle empty path parameters', async () => {
     const mockTool: AgentTool = {
@@ -509,7 +530,10 @@ describe('edge cases', () => {
 });
 
 describe('integration scenarios', () => {
-  const workspacePath = createTestWorkspace('integration');
+  let workspacePath: string;
+  beforeEach(() => {
+    workspacePath = createTestWorkspace('integration');
+  });
 
   it('should model a typical path escape attack', () => {
     // Simulate an agent attempting to write to /tmp
