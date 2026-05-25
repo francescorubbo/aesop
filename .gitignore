@@ -6,7 +6,6 @@ coverage/
 
 # Aesop workspaces and managed repos
 .aesop/
-.aesop_workspaces/
 
 # Example data
 examples/mnist/data/
