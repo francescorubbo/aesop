@@ -208,7 +208,7 @@ describe('runExperiment', () => {
       }
     });
 
-    it('should handle validation failure', async () => {
+    it('should throw error if baseline validation fails', async () => {
       // Create a failing validate script
       const failingScript = `#!/bin/bash
 exit 1
@@ -216,16 +216,15 @@ exit 1
       writeFileSync(join(projectPath, 'fail.sh'), failingScript);
       chmodSync(join(projectPath, 'fail.sh'), 0o755);
 
-      const result = await runExperiment({
-        projectDir: projectPath,
-        hypothesis: 'fail-test',
-        validateCmd: './fail.sh',
-        metricKey: 'accuracy',
-        maxIterations: 1,
-      });
-
-      expect(result.status).toBe('failure');
-      expect(result.ledgerEntry.status).toBe('failure');
+      await expect(
+        runExperiment({
+          projectDir: projectPath,
+          hypothesis: 'fail-test',
+          validateCmd: './fail.sh',
+          metricKey: 'accuracy',
+          maxIterations: 1,
+        })
+      ).rejects.toThrow(/Baseline validation failed/);
     });
 
     it('should detect no_improvement when metric does not beat best', async () => {
@@ -323,7 +322,7 @@ EOF
       expect(branches.all).not.toContain('hypothesis/cleanup-test');
     });
 
-    it('should cleanup even on validation failure', async () => {
+    it('should cleanup even if baseline validation fails', async () => {
       // Create a failing validate script
       const failingScript = `#!/bin/bash
 exit 1
@@ -331,13 +330,15 @@ exit 1
       writeFileSync(join(projectPath, 'failing.sh'), failingScript);
       chmodSync(join(projectPath, 'failing.sh'), 0o755);
 
-      await runExperiment({
-        projectDir: projectPath,
-        hypothesis: 'cleanup-fail-test',
-        validateCmd: './failing.sh',
-        metricKey: 'accuracy',
-        maxIterations: 1,
-      });
+      await expect(
+        runExperiment({
+          projectDir: projectPath,
+          hypothesis: 'cleanup-fail-test',
+          validateCmd: './failing.sh',
+          metricKey: 'accuracy',
+          maxIterations: 1,
+        })
+      ).rejects.toThrow(/Baseline validation failed/);
 
       // Workspace should still be cleaned up
       const worktreeGit = simpleGit(projectPath);
@@ -386,24 +387,27 @@ exit 1
       }
     });
 
-    it('should include error message on validation failure', async () => {
-      // Create a failing validate script
-      const failingScript = `#!/bin/bash
-exit 1
+    it('should throw error when metric is missing in baseline', async () => {
+      // Create a script that succeeds but missing metric
+      const missingMetricScript = `#!/bin/bash
+cat > eval_result.json << 'EOF'
+{
+  "wrong_metric": 0.5
+}
+EOF
 `;
-      writeFileSync(join(projectPath, 'error_test.sh'), failingScript);
-      chmodSync(join(projectPath, 'error_test.sh'), 0o755);
+      writeFileSync(join(projectPath, 'missing_metric.sh'), missingMetricScript);
+      chmodSync(join(projectPath, 'missing_metric.sh'), 0o755);
 
-      const result = await runExperiment({
-        projectDir: projectPath,
-        hypothesis: 'error-message-test',
-        validateCmd: './error_test.sh',
-        metricKey: 'accuracy',
-        maxIterations: 1,
-      });
-
-      expect(result.ledgerEntry.error).toBeDefined();
-      expect(result.ledgerEntry.error).not.toBe('');
+      await expect(
+        runExperiment({
+          projectDir: projectPath,
+          hypothesis: 'missing-metric-test',
+          validateCmd: './missing_metric.sh',
+          metricKey: 'accuracy',
+          maxIterations: 1,
+        })
+      ).rejects.toThrow(/Baseline validation failed/);
     });
 
     it('should not include error field on success', async () => {
@@ -531,10 +535,21 @@ exit 1
     });
 
     it('should include metric key in system prompt context', async () => {
+      // Ensure baseline passes first
+      const validScript = `#!/bin/bash
+cat > eval_result.json << 'EOF'
+{
+  "custom_metric": 0.5
+}
+EOF
+`;
+      writeFileSync(join(projectPath, 'valid_custom.sh'), validScript);
+      chmodSync(join(projectPath, 'valid_custom.sh'), 0o755);
+
       const result = await runExperiment({
         projectDir: projectPath,
         hypothesis: 'metric-context-test',
-        validateCmd: './validate.sh',
+        validateCmd: './valid_custom.sh',
         metricKey: 'custom_metric',
         maxIterations: 1,
       });

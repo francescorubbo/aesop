@@ -202,15 +202,13 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
     // =====================================================================
     log('Establishing baseline metrics...');
     const baselineResult = await runWithValidation(workspace.path, validateCmd, metricKey);
-    let baselineValue: number | undefined;
-    if (baselineResult.success) {
-      baselineValue = baselineResult.metrics[metricKey];
-      log(`Baseline established: ${metricKey} = ${baselineValue}`);
-    } else {
-      log(
-        `Baseline validation failed: ${baselineResult.error}. Agent will start from a broken state.`
+    if (!baselineResult.success) {
+      throw new Error(
+        `Baseline validation failed. The provided validation command "${validateCmd}" must succeed and produce a valid ${metricKey} metric before an experiment can start. Error: ${baselineResult.error}`
       );
     }
+    const baselineValue = baselineResult.metrics[metricKey];
+    log(`Baseline established: ${metricKey} = ${baselineValue}`);
 
     // =====================================================================
     // STEP 4: Run Pi SDK agent with iteration budget
