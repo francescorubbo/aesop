@@ -38,6 +38,8 @@ jobs:
 
   mnist-example:
     name: MNIST Example Integration
+    # Disabled on push: flaky LLM-driven test, only run on PRs
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
 
     steps:
