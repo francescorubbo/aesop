@@ -10,12 +10,12 @@
  *
  * Directory structure:
  * <user-project>/
- * ├── .aesop/
- * │   └── repo/                 # The managed git repository
- * │       ├── .git/
- * │       └── (snapshot files)
- * └── .aesop_ephemeral/         # Worktree workspaces
- *     └── <branch-name>/
+ * └── .aesop/
+ *     ├── repo/                 # The managed git repository
+ *     │   ├── .git/
+ *     │   └── (snapshot files)
+ *     └── ephemeral/             # Worktree workspaces
+ *         └── <branch-name>/
  */
 
 import { execSync } from 'node:child_process';
@@ -27,7 +27,7 @@ import simpleGit, { SimpleGit } from 'simple-git';
 export const MANAGED_REPO_DIR = '.aesop/repo';
 
 /** Absolute path to ephemeral workspaces */
-export const EPHEMERAL_ROOT = '.aesop_ephemeral';
+export const EPHEMERAL_ROOT = '.aesop/ephemeral';
 
 /** Default exclusion patterns (always applied) */
 const DEFAULT_EXCLUSIONS = [
