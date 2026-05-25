@@ -10,12 +10,12 @@
  *
  * Directory structure:
  * <user-project>/
- * ├── .aesop/
- * │   └── repo/                 # The managed git repository
- * │       ├── .git/
- * │       └── (snapshot files)
- * └── .aesop_ephemeral/         # Worktree workspaces
- *     └── <branch-name>/
+ * └── .aesop/
+ *     ├── repo/                 # The managed git repository
+ *     │   ├── .git/
+ *     │   └── (snapshot files)
+ *     └── ephemeral/             # Worktree workspaces
+ *         └── <branch-name>/
  */
 
 import { execSync } from 'node:child_process';
@@ -27,7 +27,7 @@ import simpleGit, { SimpleGit } from 'simple-git';
 export const MANAGED_REPO_DIR = '.aesop/repo';
 
 /** Absolute path to ephemeral workspaces */
-export const EPHEMERAL_ROOT = '.aesop_ephemeral';
+export const EPHEMERAL_ROOT = '.aesop/ephemeral';
 
 /** Default exclusion patterns (always applied) */
 const DEFAULT_EXCLUSIONS = [
@@ -71,7 +71,7 @@ export interface IWorkspaceManager {
   /** Sync user code into managed repo and commit to main */
   sync(): Promise<{ commitHash: string }>;
   /** Create an ephemeral workspace on a new branch */
-  createEphemeralWorkspace(_name: string): Promise<Workspace>;
+  createEphemeralWorkspace(_name: string, _options?: { force?: boolean }): Promise<Workspace>;
 }
 
 // ============================================================================
@@ -598,16 +598,39 @@ export class WorkspaceManager implements IWorkspaceManager {
    * Create an ephemeral workspace by checking out a branch in a worktree.
    *
    * @param branchName - Name for the new branch/workspace (e.g., "hypothesis/test-lr")
+   * @param options - Options for workspace creation
    * @returns Workspace object with path, branch, commitHash, and dispose method
    */
-  async createEphemeralWorkspace(branchName: string): Promise<Workspace> {
+  async createEphemeralWorkspace(
+    branchName: string,
+    options: { force?: boolean } = {}
+  ): Promise<Workspace> {
+    const { force = false } = options;
+
     // Ensure managed repo is initialized
     await this.init();
+
+    const repoGit = simpleGit(this.managedRepoPath);
 
     // Create ephemeral root if needed
     mkdirSync(this.ephemeralRoot, { recursive: true });
 
-    const repoGit = simpleGit(this.managedRepoPath);
+    // Check if workspace already exists
+    const worktreePath = join(this.ephemeralRoot, branchName.replace(/\//g, '_'));
+    const branches = await repoGit.branchLocal();
+    const branchExists = branches.all.includes(branchName);
+    const pathExists = existsSync(worktreePath);
+
+    if (branchExists || pathExists) {
+      if (!force) {
+        throw new Error(
+          `Workspace for branch ${branchName} already exists. Use --force to override.`
+        );
+      }
+
+      // Force override: dispose existing workspace
+      await this.disposeWorkspace(branchName, worktreePath);
+    }
 
     // Get current main branch commit - use HEAD since we're in the managed repo
     const log = await repoGit.log({ maxCount: 1 });
@@ -616,13 +639,9 @@ export class WorkspaceManager implements IWorkspaceManager {
       throw new Error('No commits found in managed repository');
     }
 
-    // Create and checkout the branch in a worktree
-    const worktreePath = join(this.ephemeralRoot, branchName.replace(/\//g, '_'));
-
     try {
       await repoGit.raw(['worktree', 'add', '--detach', worktreePath, mainCommit]);
     } catch (error) {
-      // If worktree already exists, just use it
       if (!existsSync(worktreePath)) {
         throw error;
       }
