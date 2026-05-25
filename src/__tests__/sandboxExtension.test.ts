@@ -12,14 +12,24 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { mkdirSync, rmSync } from 'node:fs';
+import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { createSandboxExtension } from '../sandboxExtension';
+
+/** Result type from the tool_call handler */
+interface BlockResult {
+  block: boolean;
+  reason?: string;
+}
 
 // ---------------------------------------------------------------------------
 // Setup
 // ---------------------------------------------------------------------------
 
 let workspacePath: string;
-let handler: Function;
+let handler: (
+  _event: { toolName: string; toolCallId: string; input: Record<string, unknown> },
+  _ctx: unknown
+) => Promise<BlockResult | undefined> | BlockResult | undefined;
 
 beforeEach(() => {
   // Real temp directory with unique suffix — consistent with how pathGuard.ts
@@ -33,10 +43,10 @@ beforeEach(() => {
   // Capture the tool_call handler. Plain object literal — no SDK imports.
   const factory = createSandboxExtension(workspacePath);
   factory({
-    on: (event: string, h: Function) => {
-      if (event === 'tool_call') handler = h;
+    on: (_event: string, h: (..._args: unknown[]) => unknown) => {
+      if (_event === 'tool_call') handler = h as typeof handler;
     },
-  } as any);
+  } as unknown as ExtensionAPI);
 });
 
 afterEach(() => {
@@ -69,7 +79,7 @@ describe('createSandboxExtension', () => {
         {}
       );
       expect(result).toMatchObject({ block: true });
-      expect(result.reason).toContain('bash');
+      expect(result?.reason).toContain('bash');
     });
 
     it('blocks commands that read from paths outside workspace', async () => {
@@ -112,7 +122,7 @@ describe('createSandboxExtension', () => {
     it('blocks read tool with path outside workspace', async () => {
       const result = await handler(makeEvent('read', { path: '/etc/passwd' }), {});
       expect(result).toMatchObject({ block: true });
-      expect(result.reason).toContain('read');
+      expect(result?.reason).toContain('read');
     });
 
     it('allows read tool with relative path inside workspace', async () => {
