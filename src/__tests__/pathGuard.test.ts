@@ -7,10 +7,10 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
 import {
   isPathInWorkspace,
@@ -24,6 +24,8 @@ import {
 /**
  * Create a temporary workspace directory for testing.
  */
+const createdDirs: string[] = [];
+
 function createTestWorkspace(name: string): string {
   const workspacePath = join(
     tmpdir(),
@@ -33,8 +35,16 @@ function createTestWorkspace(name: string): string {
   // Create a subdirectory for testing nested paths
   mkdirSync(join(workspacePath, 'src'), { recursive: true });
   mkdirSync(join(workspacePath, 'nested', 'deep'), { recursive: true });
+  createdDirs.push(workspacePath);
   return workspacePath;
 }
+
+afterEach(() => {
+  vi.clearAllMocks();
+  for (const dir of createdDirs.splice(0)) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 /**
  * Check if an AgentToolResult indicates an error.
