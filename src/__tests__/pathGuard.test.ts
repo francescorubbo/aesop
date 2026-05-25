@@ -25,7 +25,10 @@ import {
  * Create a temporary workspace directory for testing.
  */
 function createTestWorkspace(name: string): string {
-  const workspacePath = join(tmpdir(), `path-guard-test-${name}-${Date.now()}`);
+  const workspacePath = join(
+    tmpdir(),
+    `path-guard-test-${name}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
   mkdirSync(workspacePath, { recursive: true });
   // Create a subdirectory for testing nested paths
   mkdirSync(join(workspacePath, 'src'), { recursive: true });
