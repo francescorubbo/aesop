@@ -79,7 +79,8 @@ export function createSandboxExtension(workspacePath: string): (_pi: ExtensionAP
         return undefined;
       }
 
-      if (!isPathInWorkspace(pathValue, workspacePath)) {
+      const check = isPathInWorkspace(pathValue, workspacePath);
+      if (!check.allowed) {
         return {
           block: true,
           reason: `Sandbox violation (${event.toolName}): path "${pathValue}" is outside workspace`,
