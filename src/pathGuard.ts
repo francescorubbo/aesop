@@ -311,7 +311,15 @@ export function withPathGuards(
 
 /**
  * Create path-guarded versions of standard coding tools.
- * This is the primary API for enabling sandbox enforcement.
+ *
+ * NOTE: This is NOT the active enforcement mechanism in Aesop.
+ * Sandbox enforcement is applied via the Pi SDK's tool_call extension hook
+ * in sandboxExtension.ts, which calls isPathInWorkspace() and
+ * checkBashCommandSafe() directly.
+ *
+ * This function is kept as a standalone utility for consumers who want to
+ * apply path guards outside of the Pi extension system (e.g., in tests or
+ * alternative integrations).
  *
  * @param tools - Standard coding tools (from createCodingTools)
  * @param workspacePath - The workspace boundary
