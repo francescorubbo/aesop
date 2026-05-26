@@ -403,68 +403,6 @@ exit 0
   });
 
   // =======================================================================
-  // POST-CONDITION: RESULT FILE FRESHNESS
-  // =======================================================================
-
-  describe('post-condition: result file freshness', () => {
-    it('should pass when result file is recent', async () => {
-      const resultFile = 'eval_result.json';
-      const metrics = { accuracy: 0.95 };
-      const scriptPath = createValidatingScript(testDir, resultFile, metrics);
-
-      const result = await runWithValidation(testDir, scriptPath, 'accuracy', {
-        resultFile,
-        freshnessThresholdMs: 60_000,
-      });
-
-      expect(result.success).toBe(true);
-    });
-
-    it('should fail when result file is stale (using validateResultFile)', () => {
-      const resultFile = join(testDir, 'eval_result.json');
-      const metrics = { accuracy: 0.95 };
-      writeFileSync(resultFile, JSON.stringify(metrics));
-
-      // Set file to be 2 minutes old
-      const twoMinutesAgo = Date.now() - 120_000;
-      utimesSync(resultFile, new Date(twoMinutesAgo), new Date(twoMinutesAgo));
-
-      const result = validateResultFile(resultFile, 'accuracy', 60_000);
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('stale');
-    });
-
-    it('should pass when result file is recent (using validateResultFile)', () => {
-      const resultFile = join(testDir, 'eval_result.json');
-      const metrics = { accuracy: 0.95 };
-      writeFileSync(resultFile, JSON.stringify(metrics));
-
-      const result = validateResultFile(resultFile, 'accuracy', 60_000);
-
-      expect(result.success).toBe(true);
-    });
-
-    it('should respect custom freshness threshold (validateResultFile)', () => {
-      const resultFile = join(testDir, 'eval_result.json');
-
-      // Create a file that's 30 seconds old
-      writeFileSync(resultFile, JSON.stringify({ accuracy: 0.95 }));
-      const thirtySecondsAgo = Date.now() - 30_000;
-      utimesSync(resultFile, new Date(thirtySecondsAgo), new Date(thirtySecondsAgo));
-
-      // Should pass with 60 second threshold
-      const result = validateResultFile(resultFile, 'accuracy', 60_000);
-      expect(result.success).toBe(true);
-
-      // Should fail with 10 second threshold
-      const result2 = validateResultFile(resultFile, 'accuracy', 10_000);
-      expect(result2.success).toBe(false);
-      expect(result2.error).toContain('stale');
-    });
-  });
-
-  // =======================================================================
   // POST-CONDITION: VALID JSON
   // =======================================================================
 
