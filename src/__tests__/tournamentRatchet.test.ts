@@ -202,12 +202,21 @@ describe('MergeQueue', () => {
     expect(queue.isEmpty).toBe(false);
   });
 
-  it('should sort by metric value descending', () => {
+  it('should sort by metric value descending when maximize is true', () => {
     queue.add('branch-1', 0.7, '/path/1');
     queue.add('branch-2', 0.9, '/path/2');
     queue.add('branch-3', 0.8, '/path/3');
 
     expect(queue.peek()).toBe('branch-2'); // Highest metric first
+  });
+
+  it('should sort by metric value ascending when maximize is false', () => {
+    const ascQueue = new MergeQueue(false);
+    ascQueue.add('branch-1', 0.7, '/path/1');
+    ascQueue.add('branch-2', 0.9, '/path/2');
+    ascQueue.add('branch-3', 0.8, '/path/3');
+
+    expect(ascQueue.peek()).toBe('branch-1'); // Lowest metric first
   });
 
   it('should return entries in order', () => {
