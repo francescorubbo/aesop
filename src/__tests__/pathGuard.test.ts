@@ -146,10 +146,13 @@ describe('checkBashCommandSafe', () => {
     expect(checkBashCommandSafe('cd nested/deep', workspacePath).allowed).toBe(true);
   });
 
-  it('should allow cd to home and special targets', () => {
-    expect(checkBashCommandSafe('cd ~', workspacePath).allowed).toBe(true);
+  it('should allow cd to special targets', () => {
     expect(checkBashCommandSafe('cd -', workspacePath).allowed).toBe(true);
     expect(checkBashCommandSafe('cd', workspacePath).allowed).toBe(true);
+  });
+
+  it('should block cd to home', () => {
+    expect(checkBashCommandSafe('cd ~', workspacePath).allowed).toBe(false);
   });
 
   it('should handle absolute path commands outside workspace', () => {
