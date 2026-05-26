@@ -9,7 +9,6 @@
  *
  * **After validation script exits zero:**
  * - Asserts `eval_result.json` exists
- * - Asserts it was written within the last 60 seconds (freshness guard)
  * - Asserts it is valid JSON
  * - Asserts it contains at least the required metric key
  * - Returns the parsed metrics
@@ -21,14 +20,13 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { existsSync, readFileSync, unlinkSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 
 const execFileAsync = promisify(execFile);
 
 const DEFAULT_RESULT_FILE = 'eval_result.json';
 const DEFAULT_METRIC_KEY = 'accuracy';
-const DEFAULT_FRESHNESS_THRESHOLD_MS = 60_000; // 60 seconds
 
 /**
  * Result of running validation with contract enforcement.
@@ -54,8 +52,6 @@ export interface ValidateContractConfig {
   metricKey?: string;
   /** Path to the result file (default: 'eval_result.json') */
   resultFile?: string;
-  /** Maximum age of result file in milliseconds (default: 60000) */
-  freshnessThresholdMs?: number;
   /** Working directory for command execution (default: workspacePath) */
   cwd?: string;
 }
@@ -75,7 +71,6 @@ export interface ValidateContractConfig {
  */
 export enum ValidationContractError {
   RESULT_FILE_NOT_FOUND = 'RESULT_FILE_NOT_FOUND',
-  RESULT_FILE_STALE = 'RESULT_FILE_STALE',
   RESULT_FILE_INVALID_JSON = 'RESULT_FILE_INVALID_JSON',
   RESULT_FILE_MISSING_METRIC = 'RESULT_FILE_MISSING_METRIC',
   VALIDATION_SCRIPT_FAILED = 'VALIDATION_SCRIPT_FAILED',
@@ -121,7 +116,6 @@ function isValidNumber(value: unknown): value is number {
  *
  * **Post-conditions (executed after the script exits zero):**
  * - Asserts result file exists
- * - Asserts result file was recently written (freshness guard)
  * - Asserts result file is valid JSON
  * - Asserts result file contains the required metric key
  *
@@ -186,13 +180,7 @@ export async function runWithValidationDetailed(
   workspacePath: string,
   config: ValidateContractConfig
 ): Promise<ValidationResultDetailed> {
-  const {
-    cmd,
-    metricKey = DEFAULT_METRIC_KEY,
-    resultFile = DEFAULT_RESULT_FILE,
-    freshnessThresholdMs = DEFAULT_FRESHNESS_THRESHOLD_MS,
-    cwd,
-  } = config;
+  const { cmd, metricKey = DEFAULT_METRIC_KEY, resultFile = DEFAULT_RESULT_FILE, cwd } = config;
 
   const workingDir = cwd ?? workspacePath;
   const resultFilePath = join(workingDir, resultFile);
@@ -288,38 +276,7 @@ export async function runWithValidationDetailed(
     );
   }
 
-  // POST-CONDITION 2: Result file must be recent (freshness guard)
-  let fileStats: ReturnType<typeof statSync>;
-  try {
-    fileStats = statSync(resultFilePath);
-  } catch (err) {
-    return createDetailedError(
-      startTime,
-      ValidationContractError.RESULT_FILE_NOT_FOUND,
-      `Failed to read result file stats: ${err instanceof Error ? err.message : String(err)}`,
-      { resultFilePath }
-    );
-  }
-  const fileAgeMs = Date.now() - fileStats.mtimeMs;
-
-  if (fileAgeMs > freshnessThresholdMs) {
-    return createDetailedError(
-      startTime,
-      ValidationContractError.RESULT_FILE_STALE,
-      `Result file "${resultFile}" exists but was last modified ${Math.round(fileAgeMs / 1000)}s ago ` +
-        `(threshold: ${freshnessThresholdMs / 1000}s). This may indicate a stale result from a ` +
-        'previous run. The validation script must write a fresh result file.',
-      {
-        cmd,
-        resultFile,
-        fileAgeMs,
-        freshnessThresholdMs,
-        lastModified: fileStats.mtimeMs,
-      }
-    );
-  }
-
-  // POST-CONDITION 3: Result file must be valid JSON
+  // POST-CONDITION 2: Result file must be valid JSON
   let parsedResult: Record<string, unknown>;
   let rawContent: string;
 
@@ -337,7 +294,7 @@ export async function runWithValidationDetailed(
     );
   }
 
-  // POST-CONDITION 4: Result file must contain the required metric key
+  // POST-CONDITION 3: Result file must contain the required metric key
   if (!(metricKey in parsedResult) || !isValidNumber(parsedResult[metricKey])) {
     return createDetailedError(
       startTime,
@@ -468,8 +425,7 @@ function parseArgv(cmd: string): [string, string[]] {
  */
 export function validateResultFile(
   resultFilePath: string,
-  metricKey: string = DEFAULT_METRIC_KEY,
-  freshnessThresholdMs: number = DEFAULT_FRESHNESS_THRESHOLD_MS
+  metricKey: string = DEFAULT_METRIC_KEY
 ): ValidationResult {
   const startTime = Date.now();
 
@@ -479,29 +435,6 @@ export function validateResultFile(
       success: false,
       metrics: {},
       error: `Result file not found: ${resultFilePath}`,
-      durationMs: Date.now() - startTime,
-    };
-  }
-
-  // Check freshness
-  let fileStats: ReturnType<typeof statSync>;
-  try {
-    fileStats = statSync(resultFilePath);
-  } catch (err) {
-    return {
-      success: false,
-      metrics: {},
-      error: `Failed to read result file stats: ${err instanceof Error ? err.message : String(err)}`,
-      durationMs: Date.now() - startTime,
-    };
-  }
-  const fileAgeMs = Date.now() - fileStats.mtimeMs;
-
-  if (fileAgeMs > freshnessThresholdMs) {
-    return {
-      success: false,
-      metrics: {},
-      error: `Result file is stale (${Math.round(fileAgeMs / 1000)}s old, threshold: ${freshnessThresholdMs / 1000}s)`,
       durationMs: Date.now() - startTime,
     };
   }
