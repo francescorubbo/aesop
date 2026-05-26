@@ -265,9 +265,10 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
 
     // Run the agent with iteration budget by running prompt multiple times
     // until maxIterations is reached or the agent signals completion
-    let iterationCount = 0;
+    let lastIteration = 0;
 
     for (let i = 0; i < maxIterations; i++) {
+      lastIteration = i + 1;
       log(`Agent iteration ${i + 1}/${maxIterations}`);
       await session.prompt(`Iteration ${i + 1}. Improve ${metricKey}, then run: ${validateCmd}.`);
 
@@ -301,7 +302,7 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
       }
     }
 
-    log(`Agent finished after ${iterationCount} iterations...`);
+    log(`Agent finished after ${lastIteration} iterations...`);
 
     // =====================================================================
     // STEP 5: Validate results
