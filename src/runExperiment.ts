@@ -198,8 +198,22 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
     await agentResourceLoader.reload();
 
     // =====================================================================
+    // STEP 3.5: Establish baseline
+    // =====================================================================
+    log('Establishing baseline metrics...');
+    const baselineResult = await runWithValidation(workspace.path, validateCmd, metricKey);
+    if (!baselineResult.success) {
+      throw new Error(
+        `Baseline validation failed. The provided validation command "${validateCmd}" must succeed and produce a valid ${metricKey} metric before an experiment can start. Error: ${baselineResult.error}`
+      );
+    }
+    const baselineValue = baselineResult.metrics[metricKey];
+    log(`Baseline established: ${metricKey} = ${baselineValue}`);
+
+    // =====================================================================
     // STEP 4: Run Pi SDK agent with iteration budget
     // =====================================================================
+
     log(`Starting agent with maxIterations=${maxIterations}...`);
 
     const authStorage = AuthStorage.create();
@@ -277,10 +291,10 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
           break;
         }
         log(
-          `No improvement yet: ${metricKey}=${value} (best so far: ${ratchet.best}). Continuing...`
+          `No improvement yet: ${metricKey}=${value} (baseline: ${baselineValue ?? 'N/A'}, best so far: ${ratchet.best}). Continuing...`
         );
         await session.prompt(
-          `Validation result: ${metricKey}=${value} (best so far: ${ratchet.best}). Keep improving.`
+          `Validation result: ${metricKey}=${value} (baseline: ${baselineValue ?? 'N/A'}, best so far: ${ratchet.best}). Keep improving.`
         );
       } else {
         await session.prompt(`Validation failed: ${interim.error}. Fix the issue and try again.`);
@@ -337,8 +351,8 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
 
     log(
       ratchetResult.improved
-        ? `Improved! ${currentValue} > ${ratchetResult.best}`
-        : `No improvement. Current: ${currentValue}, Best: ${ratchetResult.best}`
+        ? `Improved! Current: ${currentValue}, Baseline: ${baselineValue ?? 'N/A'}, Global Best: ${ratchetResult.best}`
+        : `No improvement. Current: ${currentValue}, Baseline: ${baselineValue ?? 'N/A'}, Global Best: ${ratchetResult.best}`
     );
 
     // =====================================================================
