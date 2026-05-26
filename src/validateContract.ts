@@ -19,12 +19,12 @@
  * - Surfaces a clear error message
  */
 
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { existsSync, readFileSync, unlinkSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 const DEFAULT_RESULT_FILE = 'eval_result.json';
 const DEFAULT_METRIC_KEY = 'accuracy';
@@ -224,7 +224,8 @@ export async function runWithValidationDetailed(
   let scriptError: string | undefined;
 
   try {
-    const { stdout, stderr } = await execAsync(cmd, {
+    const [bin, args] = parseArgv(cmd);
+    const { stdout, stderr } = await execFileAsync(bin, args, {
       cwd: workingDir,
       timeout: 300_000, // 5 minute timeout
     });
@@ -441,6 +442,15 @@ function formatScriptError(
   }
 
   return parts.join('\n');
+}
+
+/**
+ * Simple utility to split a command string into a binary and its arguments.
+ */
+function parseArgv(cmd: string): [string, string[]] {
+  const [bin, ...args] = cmd.trim().split(/\s+/);
+  if (!bin) throw new Error(`Empty command: "${cmd}"`);
+  return [bin, args];
 }
 
 /**

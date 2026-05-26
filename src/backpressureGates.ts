@@ -8,10 +8,10 @@
  * This keeps the harness independent of any specific language or environment.
  */
 
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export interface StaticCheckResult {
   success: boolean;
@@ -36,7 +36,8 @@ export async function runStaticChecks(
   console.log(`[BackpressureGates] Running: ${checkCommand}`);
 
   try {
-    const { stderr } = await execAsync(checkCommand, {
+    const [bin, args] = parseArgv(checkCommand);
+    const { stderr } = await execFileAsync(bin, args, {
       cwd: directoryPath,
       timeout: 300000, // 5 minute timeout
     });
@@ -104,6 +105,15 @@ function formatErrorOutput(command: string, stdout: string, stderr: string): str
   }
 
   return parts.join('\n');
+}
+
+/**
+ * Simple utility to split a command string into a binary and its arguments.
+ */
+function parseArgv(cmd: string): [string, string[]] {
+  const [bin, ...args] = cmd.trim().split(/\s+/);
+  if (!bin) throw new Error(`Empty command: "${cmd}"`);
+  return [bin, args];
 }
 
 export default runStaticChecks;
