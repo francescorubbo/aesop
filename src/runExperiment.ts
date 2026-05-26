@@ -89,20 +89,13 @@ function slugify(text: string): string {
 /**
  * Build the experiment-aware system prompt for the Pi agent.
  */
-function buildSystemPrompt(
-  hypothesis: string,
-  validateCmd: string,
-  metricKey: string,
-  workspacePath: string
-): string {
+function buildSystemPrompt(hypothesis: string, workspacePath: string): string {
   return `You are an ML experiment agent. Your task is:
 <hypothesis>${hypothesis}</hypothesis>
 
 Rules:
 - You may only edit files within this workspace. Do not read from or write to paths outside it.
-- After each set of changes, run the validate command: ${validateCmd}
-- The validate command writes eval_result.json. Your goal is to make the ${metricKey} value as high as possible.
-- When you are satisfied with your result, stop. Do not keep iterating if the metric is not improving.
+- The harness will run the validation script after each of your turns and report the result back to you. Focus on editing code to improve the metric.
 - Do not modify the validate script or eval_result.json directly.
 
 Workspace path: ${workspacePath}`;
@@ -194,7 +187,7 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
     // =====================================================================
     // STEP 3: Build agent system prompt
     // =====================================================================
-    const systemPrompt = buildSystemPrompt(hypothesis, validateCmd, metricKey, workspace.path);
+    const systemPrompt = buildSystemPrompt(hypothesis, workspace.path);
 
     agentResourceLoader = new DefaultResourceLoader({
       cwd: workspace.path,
