@@ -371,10 +371,9 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
     // =====================================================================
     // STEP 8: Determine final status and log
     // =====================================================================
-    const finalStatus: 'success' | 'no_improvement' =
-      ratchetResult.improved && ratchetResult.bestBranch !== branchName
-        ? 'success'
-        : 'no_improvement';
+    const finalStatus: 'success' | 'no_improvement' = ratchetResult.improved
+      ? 'success'
+      : 'no_improvement';
 
     const ledgerEntry = createLedgerEntry({
       branch: branchName,
