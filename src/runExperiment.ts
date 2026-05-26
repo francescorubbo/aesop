@@ -160,6 +160,14 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
   const workspaceManager = new WorkspaceManager(resolvedProjectDir);
   const ledger = new LedgerManager({ ledgerPath });
 
+  const existing = ledger.readByStatus('success').find((e) => e.branch === branchName);
+  if (existing && !force) {
+    throw new Error(
+      `Branch "${branchName}" already has a successful ledger entry. ` +
+        `Pass force: true to re-run it.`
+    );
+  }
+
   let workspace: Awaited<ReturnType<WorkspaceManager['createEphemeralWorkspace']>> | null = null;
   let agentSession: Awaited<ReturnType<typeof createAgentSession>>['session'] | null = null;
   let agentResourceLoader: DefaultResourceLoader | null = null;
