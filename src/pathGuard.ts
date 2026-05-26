@@ -53,9 +53,9 @@ function detectViolations(command: string, workspacePath: string): string[] {
   }
 
   // Pattern for cd command
-  const cdPattern = /\bcd\s+(['"]?)(\S+)\1/g;
+  const cdPattern = /\bcd\s+(?:'([^']*)'|"([^"]*)"|(\S+))/g;
   while ((match = cdPattern.exec(command)) !== null) {
-    const targetPath = match[2]!;
+    const targetPath = match[1] ?? match[2] ?? match[3] ?? '';
     // Skip special cd targets
     if (targetPath === '' || targetPath === '~' || targetPath === '-') {
       continue;
@@ -64,6 +64,12 @@ function detectViolations(command: string, workspacePath: string): string[] {
     if (!result.allowed) {
       escapedPaths.push(targetPath);
     }
+  }
+
+  // Detect unresolved variable expansions that might escape the sandbox.
+  const envVarPattern = /(?:\$\{?[A-Za-z_][A-Za-z0-9_]*\}?|~(?:\/|$))/g;
+  while ((match = envVarPattern.exec(command)) !== null) {
+    escapedPaths.push(match[0]); // treat unresolvable expansions as violations
   }
 
   // Pattern for absolute paths in various command contexts
