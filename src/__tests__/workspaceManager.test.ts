@@ -503,6 +503,35 @@ describe('WorkspaceManager', () => {
       expect(workspaces.map((w) => w.branch)).toContain('test/workspace-1');
       expect(workspaces.map((w) => w.branch)).toContain('test/workspace-2');
     });
+
+    it('should correctly handle branch names with underscores', async () => {
+      const branchName = 'hypothesis/lr_decay';
+      await manager.createEphemeralWorkspace(branchName);
+
+      const workspaces = manager.listEphemeralWorkspaces();
+      const ws = workspaces.find((w) => w.branch === branchName);
+
+      expect(ws).toBeDefined();
+      expect(ws?.branch).toBe(branchName);
+    });
+
+    it('should fallback to underscore replacement for legacy workspaces', async () => {
+      // Manually create a directory that looks like a legacy workspace
+      // (no .aesop-branch file)
+      const legacyBranch = 'hypothesis/legacy_test';
+      const legacyDirName = legacyBranch.replace(/\//g, '_'); // hypothesis_legacy_test
+      const legacyPath = join(manager['ephemeralRoot'], legacyDirName);
+
+      mkdirSync(legacyPath, { recursive: true });
+
+      const workspaces = manager.listEphemeralWorkspaces();
+      const ws = workspaces.find((w) => w.path === legacyPath);
+
+      expect(ws).toBeDefined();
+      // Legacy fallback replaces ALL underscores with slashes
+      // hypothesis_legacy_test -> hypothesis/legacy/test
+      expect(ws?.branch).toBe('hypothesis/legacy/test');
+    });
   });
 
   describe('integration scenarios', () => {

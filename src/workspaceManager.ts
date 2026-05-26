@@ -651,6 +651,9 @@ export class WorkspaceManager implements IWorkspaceManager {
     const worktreeGit = simpleGit(worktreePath);
     await worktreeGit.checkout(['-b', branchName]);
 
+    // Record the canonical branch name for reliable reconstruction
+    writeFileSync(join(worktreePath, '.aesop-branch'), branchName, 'utf-8');
+
     const workspace: Workspace = {
       path: worktreePath,
       branch: branchName,
@@ -712,10 +715,14 @@ export class WorkspaceManager implements IWorkspaceManager {
     const entries = readdirSync(this.ephemeralRoot, { withFileTypes: true });
     return entries
       .filter((entry) => entry.isDirectory())
-      .map((entry) => ({
-        path: join(this.ephemeralRoot, entry.name),
-        branch: entry.name.replace(/_/g, '/'),
-      }));
+      .map((entry) => {
+        const path = join(this.ephemeralRoot, entry.name);
+        const indexFile = join(path, '.aesop-branch');
+        const branch = existsSync(indexFile)
+          ? readFileSync(indexFile, 'utf-8').trim()
+          : entry.name.replace(/_/g, '/'); // legacy fallback
+        return { path, branch };
+      });
   }
 }
 
