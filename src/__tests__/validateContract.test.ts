@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { writeFileSync, mkdirSync, rmSync, utimesSync } from 'node:fs';
+import { writeFileSync, mkdirSync, rmSync, utimesSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
@@ -782,6 +782,20 @@ exit 1
   // =======================================================================
 
   describe('edge cases', () => {
+    it('should reject a command containing shell metacharacters', async () => {
+      const markerFile = join(testDir, 'injected.txt');
+      const injectionCmd = `./validate.sh; touch ${markerFile}`;
+
+      // Create the script so it exists, but the injection should still fail
+      createValidatingScript(testDir, 'eval_result.json', { accuracy: 0.9 });
+
+      const result = await runWithValidation(testDir, injectionCmd, 'accuracy');
+
+      expect(result.success).toBe(false);
+      // The marker file should NOT have been created because the shell was not invoked
+      expect(existsSync(markerFile)).toBe(false);
+    });
+
     it('should handle empty metrics object with only the required metric', async () => {
       const resultFile = 'eval_result.json';
       const metrics = { accuracy: 0.99 };

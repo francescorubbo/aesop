@@ -1,26 +1,27 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { runStaticChecks, type StaticCheckResult } from '../backpressureGates';
 
-// Create a mockable exec function using vi.hoisted
-const mockExec = vi.hoisted(() => {
+// Create a mockable execFile function using vi.hoisted
+const mockExecFile = vi.hoisted(() => {
   const fn = function (
-    _cmd: string,
+    _bin: string,
+    _args: string[],
     _opts: unknown,
     cb: (_error: Error | null, _stdout: string, _stderr: string) => void
-  ): ReturnType<typeof exec> {
+  ): ReturnType<typeof execFile> {
     if (typeof cb === 'function') {
       cb(null, '', '');
     }
-    return {} as ReturnType<typeof exec>;
+    return {} as ReturnType<typeof execFile>;
   };
-  Object.defineProperty(fn, 'length', { value: 3, writable: false });
+  Object.defineProperty(fn, 'length', { value: 4, writable: false });
   return vi.fn(fn);
 });
 
 // Mock node:child_process
 vi.mock('node:child_process', () => ({
-  exec: mockExec,
+  execFile: mockExecFile,
 }));
 
 // Mock node:util to use our promisify that handles mocks correctly
@@ -64,14 +65,16 @@ function createExecError(
 
 describe('runStaticChecks', () => {
   beforeEach(() => {
-    mockExec.mockImplementation((_cmd: string, _options: unknown, callback?: ExecCallback) => {
-      if (callback) callback(null, '', '');
-      return {} as ReturnType<typeof exec>;
-    });
+    mockExecFile.mockImplementation(
+      (_bin: string, _args: string[], _options: unknown, callback?: ExecCallback) => {
+        if (callback) callback(null, '', '');
+        return {} as ReturnType<typeof execFile>;
+      }
+    );
   });
 
   afterEach(() => {
-    mockExec.mockReset();
+    mockExecFile.mockReset();
   });
 
   it('should return success when check passes', async () => {
@@ -85,8 +88,9 @@ describe('runStaticChecks', () => {
     const result = await runStaticChecks('/test/project');
 
     expect(result.success).toBe(true);
-    expect(mockExec).toHaveBeenCalledWith(
+    expect(mockExecFile).toHaveBeenCalledWith(
       './aesop_validate.sh',
+      [],
       expect.objectContaining({ cwd: '/test/project' }),
       expect.any(Function)
     );
@@ -96,18 +100,22 @@ describe('runStaticChecks', () => {
     const result = await runStaticChecks('/test/project', 'pytest .');
 
     expect(result.success).toBe(true);
-    expect(mockExec).toHaveBeenCalledWith(
-      'pytest .',
+    expect(mockExecFile).toHaveBeenCalledWith(
+      'pytest',
+      ['.'],
       expect.objectContaining({ cwd: '/test/project' }),
       expect.any(Function)
     );
   });
 
   it('should return error output when check fails', async () => {
-    mockExec.mockImplementation((_cmd: string, _options: unknown, callback?: ExecCallback) => {
-      if (callback) callback(createExecError('Test output', 'Error: assertion failed', 1), '', '');
-      return {} as ReturnType<typeof exec>;
-    });
+    mockExecFile.mockImplementation(
+      (_bin: string, _args: string[], _options: unknown, callback?: ExecCallback) => {
+        if (callback)
+          callback(createExecError('Test output', 'Error: assertion failed', 1), '', '');
+        return {} as ReturnType<typeof execFile>;
+      }
+    );
 
     const result = await runStaticChecks('/test/project', 'pytest .');
 
@@ -119,10 +127,12 @@ describe('runStaticChecks', () => {
   });
 
   it('should include stdout in error output', async () => {
-    mockExec.mockImplementation((_cmd: string, _options: unknown, callback?: ExecCallback) => {
-      if (callback) callback(createExecError('Collected 10 items', 'Some error', 1), '', '');
-      return {} as ReturnType<typeof exec>;
-    });
+    mockExecFile.mockImplementation(
+      (_bin: string, _args: string[], _options: unknown, callback?: ExecCallback) => {
+        if (callback) callback(createExecError('Collected 10 items', 'Some error', 1), '', '');
+        return {} as ReturnType<typeof execFile>;
+      }
+    );
 
     const result = await runStaticChecks('/test/project');
 
@@ -132,10 +142,12 @@ describe('runStaticChecks', () => {
   });
 
   it('should include stderr in error output', async () => {
-    mockExec.mockImplementation((_cmd: string, _options: unknown, callback?: ExecCallback) => {
-      if (callback) callback(createExecError('', 'mypy: type error on line 42', 1), '', '');
-      return {} as ReturnType<typeof exec>;
-    });
+    mockExecFile.mockImplementation(
+      (_bin: string, _args: string[], _options: unknown, callback?: ExecCallback) => {
+        if (callback) callback(createExecError('', 'mypy: type error on line 42', 1), '', '');
+        return {} as ReturnType<typeof execFile>;
+      }
+    );
 
     const result = await runStaticChecks('/test/project');
 
@@ -147,8 +159,9 @@ describe('runStaticChecks', () => {
   it('should respect cwd option', async () => {
     await runStaticChecks('/custom/path', 'cargo test');
 
-    expect(mockExec).toHaveBeenCalledWith(
-      'cargo test',
+    expect(mockExecFile).toHaveBeenCalledWith(
+      'cargo',
+      ['test'],
       expect.objectContaining({ cwd: '/custom/path' }),
       expect.any(Function)
     );
@@ -157,35 +170,60 @@ describe('runStaticChecks', () => {
   it('should set timeout option', async () => {
     await runStaticChecks('/test/project');
 
-    expect(mockExec).toHaveBeenCalledWith(
+    expect(mockExecFile).toHaveBeenCalledWith(
       expect.any(String),
+      expect.any(Array),
       expect.objectContaining({ timeout: 300000 }),
       expect.any(Function)
     );
   });
 
   it('should log stderr on success', async () => {
-    mockExec.mockImplementation((_cmd: string, _options: unknown, callback?: ExecCallback) => {
-      if (callback) callback(null, '', 'Warning: deprecated API');
-      return {} as ReturnType<typeof exec>;
-    });
+    mockExecFile.mockImplementation(
+      (_bin: string, _args: string[], _options: unknown, callback?: ExecCallback) => {
+        if (callback) callback(null, '', 'Warning: deprecated API');
+        return {} as ReturnType<typeof execFile>;
+      }
+    );
 
     const result = await runStaticChecks('/test/project');
 
     expect(result.success).toBe(true);
   });
+
+  it('should reject a command containing shell metacharacters', async () => {
+    mockExecFile.mockImplementation(
+      (_bin: string, _args: string[], _options: unknown, callback?: ExecCallback) => {
+        // With execFile, the semicolon is part of the binary name or an argument,
+        // so it will fail to find the executable.
+        if (callback) callback(createExecError('', 'ENOENT', 127), '', '');
+        return {} as ReturnType<typeof execFile>;
+      }
+    );
+
+    const result = await runStaticChecks('/tmp', './validate.sh; echo INJECTED');
+    expect(result.success).toBe(false);
+    expect(mockExecFile).toHaveBeenCalledWith(
+      './validate.sh;',
+      ['echo', 'INJECTED'],
+      expect.any(Object),
+      expect.any(Function)
+    );
+  });
 });
 
 describe('StaticCheckResult type', () => {
   beforeEach(() => {
-    mockExec.mockImplementation((_cmd: string, _options: unknown, callback?: ExecCallback) => {
-      if (callback) callback(null, '', '');
-      return {} as ReturnType<typeof exec>;
-    });
+    mockExecFile.mockImplementation(
+      (_bin: string, _args: string[], _options: unknown, callback?: ExecCallback) => {
+        if (callback) callback(null, '', '');
+        return {} as ReturnType<typeof execFile>;
+      }
+    );
   });
 
   afterEach(() => {
-    mockExec.mockReset();
+    mockExecFile.mockReset();
   });
 
   it('should have correct shape when success', async () => {
@@ -196,10 +234,12 @@ describe('StaticCheckResult type', () => {
   });
 
   it('should have errorOutput when failed', async () => {
-    mockExec.mockImplementation((_cmd: string, _options: unknown, callback?: ExecCallback) => {
-      if (callback) callback(createExecError('', 'error', 1), '', '');
-      return {} as ReturnType<typeof exec>;
-    });
+    mockExecFile.mockImplementation(
+      (_bin: string, _args: string[], _options: unknown, callback?: ExecCallback) => {
+        if (callback) callback(createExecError('', 'error', 1), '', '');
+        return {} as ReturnType<typeof execFile>;
+      }
+    );
 
     const result: StaticCheckResult = await runStaticChecks('/test/project');
 
