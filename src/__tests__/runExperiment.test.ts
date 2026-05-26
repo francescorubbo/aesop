@@ -305,6 +305,18 @@ EOF
   });
 
   describe('workspace lifecycle', () => {
+    it('should dispose the session exactly once', async () => {
+      await runExperiment({
+        projectDir: projectPath,
+        hypothesis: 'dispose-once-test',
+        validateCmd: './validate.sh',
+        metricKey: 'accuracy',
+        maxIterations: 1,
+      });
+
+      expect(mockSession.dispose).toHaveBeenCalledTimes(1);
+    });
+
     it('should dispose workspace after experiment', async () => {
       await runExperiment({
         projectDir: projectPath,

@@ -301,11 +301,7 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
       }
     }
 
-    log(`Agent finished after ${iterationCount} iterations, disposing session...`);
-
-    // Dispose the session
-    session.dispose();
-    log('Session disposed');
+    log(`Agent finished after ${iterationCount} iterations...`);
 
     // =====================================================================
     // STEP 5: Validate results
