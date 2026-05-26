@@ -275,8 +275,8 @@ export async function runWithValidationDetailed(
 
   // POST-CONDITION 1: Result file must exist
   if (!existsSync(resultFilePath)) {
-    const failureDetail = scriptExitedZero 
-      ? 'exited successfully' 
+    const failureDetail = scriptExitedZero
+      ? 'exited successfully'
       : `failed${scriptError ? `\n\nScript Error:\n${scriptError}` : ''}`;
 
     return createDetailedError(

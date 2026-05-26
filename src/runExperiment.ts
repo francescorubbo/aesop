@@ -22,7 +22,7 @@ import {
 import { getModel } from '@earendil-works/pi-ai';
 
 import { WorkspaceManager } from './workspaceManager.js';
-import { runWithValidation } from './validateContract.js';
+import { runWithValidation, type ValidationResult } from './validateContract.js';
 import { checkRatchet, type RatchetResult } from './ratchet.js';
 import { LedgerManager, type LedgerEntry } from './ledger.js';
 import { createSandboxExtension } from './sandboxExtension.js';
@@ -267,6 +267,7 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
     // Run the agent with iteration budget by running prompt multiple times
     // until maxIterations is reached or the agent signals completion
     let lastIteration = 0;
+    let lastInterimResult: ValidationResult | null = null;
 
     for (let i = 0; i < maxIterations; i++) {
       lastIteration = i + 1;
@@ -275,6 +276,8 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
 
       log('Running validation after agent iteration...');
       const interim = await runWithValidation(workspace.path, validateCmd, metricKey);
+      lastInterimResult = interim;
+
       if (interim.success) {
         log(`Validation succeeded. Metrics: ${JSON.stringify(interim.metrics)}`);
         const value = interim.metrics[metricKey];
@@ -309,7 +312,12 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
     // STEP 5: Validate results
     // =====================================================================
     log('Running validation...');
-    const validationResult = await runWithValidation(workspace.path, validateCmd, metricKey);
+
+    // Reuse the last interim result if we already have a successful one from the loop
+    // to avoid redundant execution of the validation script.
+    const validationResult = lastInterimResult?.success
+      ? lastInterimResult
+      : await runWithValidation(workspace.path, validateCmd, metricKey);
 
     if (!validationResult.success) {
       const error = validationResult.error ?? 'Validation failed';
