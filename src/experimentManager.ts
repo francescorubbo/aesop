@@ -5,7 +5,7 @@
  * Supports ephemeral workspaces for complete isolation of hypothesis experiments.
  */
 
-import { appendFileSync, readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import simpleGit, { SimpleGit } from 'simple-git';
 import {
@@ -14,13 +14,17 @@ import {
   type WorkspaceInfo,
   type CreateHypothesisOptions,
 } from './workspaceManager.js';
+import { LedgerManager } from './ledger.js';
 
 export interface ExperimentRecord {
   timestamp: string;
   branch: string;
-  commitHash: string;
-  status: 'pending' | 'success' | 'failed';
+  baseCommit: string;
+  hypothesisCommit: string;
+  status: 'success' | 'failure' | 'no_improvement';
   metrics: Record<string, number>;
+  durationMs: number;
+  error?: string;
 }
 
 export interface CreateBranchOptions {
@@ -51,10 +55,8 @@ export interface IExperimentManager {
 const LEDGER_FILENAME = 'experiments.jsonl';
 
 /**
- * Manages distributed ML experiments with Git-based versioning.
- *
- * When ephemeral mode is enabled, all operations happen within isolated
- * workspace directories, keeping the user's main repository untouched.
+ * @deprecated Use WorkspaceManager + LedgerManager directly.
+ * ExperimentManager will be removed in v0.4.0.
  */
 export class ExperimentManager implements IExperimentManager {
   private git: SimpleGit;
@@ -187,23 +189,26 @@ export class ExperimentManager implements IExperimentManager {
     status: 'pending' | 'success' | 'failed',
     metrics: Record<string, number>
   ): Promise<void> {
-    const statusResult = await this.git.status();
-    const currentBranch = statusResult.current ?? branch;
+    // Map legacy statuses to the canonical LedgerEntry schema
+    const canonicalStatus =
+      status === 'failed'
+        ? 'failure'
+        : status === 'pending'
+          ? 'failure' // pending should not be persisted; treat as failure
+          : 'success';
 
     const commitHash = (await this.git.raw(['rev-parse', 'HEAD'])).trim();
 
-    const record: ExperimentRecord = {
+    const ledger = new LedgerManager({ ledgerPath: join(this.hostRepoPath, LEDGER_FILENAME) });
+    ledger.append({
       timestamp: new Date().toISOString(),
-      branch: currentBranch,
-      commitHash,
-      status,
+      branch,
+      baseCommit: commitHash, // best approximation available here
+      hypothesisCommit: commitHash,
+      status: canonicalStatus,
       metrics,
-    };
-
-    const ledgerPath = join(this.hostRepoPath, LEDGER_FILENAME);
-    const line = JSON.stringify(record) + '\n';
-
-    appendFileSync(ledgerPath, line);
+      durationMs: 0, // not tracked in legacy API
+    });
   }
 
   /**
