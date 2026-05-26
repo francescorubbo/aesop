@@ -200,7 +200,7 @@ export class ExperimentManager implements IExperimentManager {
     const commitHash = (await this.git.raw(['rev-parse', 'HEAD'])).trim();
 
     const ledger = new LedgerManager({ ledgerPath: join(this.hostRepoPath, LEDGER_FILENAME) });
-    ledger.append({
+    await ledger.append({
       timestamp: new Date().toISOString(),
       branch,
       baseCommit: commitHash, // best approximation available here

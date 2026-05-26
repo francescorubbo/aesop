@@ -482,7 +482,7 @@ describe('checkRatchet integration', () => {
     cleanupDir(tempDir);
   });
 
-  it('should support the full ratchet workflow', () => {
+  it('should support the full ratchet workflow', async () => {
     // Simulate a series of experiments over time
 
     // First experiment - establishes baseline
@@ -492,7 +492,7 @@ describe('checkRatchet integration', () => {
 
     // Append to ledger
     const ledger = new LedgerManager({ ledgerPath });
-    ledger.append(
+    await ledger.append(
       createEntry({
         branch: 'baseline',
         hypothesisCommit: 'commita',
@@ -505,7 +505,7 @@ describe('checkRatchet integration', () => {
     result = checkRatchet(ledgerPath, 'accuracy', 0.88);
     expect(result.improved).toBe(true);
     expect(result.best).toBe(0.82);
-    ledger.append(
+    await ledger.append(
       createEntry({
         branch: 'improved-1',
         hypothesisCommit: 'commitb',
@@ -530,7 +530,7 @@ describe('checkRatchet integration', () => {
     // Fifth experiment - beats the best
     result = checkRatchet(ledgerPath, 'accuracy', 0.92);
     expect(result.improved).toBe(true);
-    ledger.append(
+    await ledger.append(
       createEntry({
         branch: 'breakthrough',
         hypothesisCommit: 'commitc',

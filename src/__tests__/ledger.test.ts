@@ -29,9 +29,9 @@ function createEntry(overrides: Partial<LedgerEntry> = {}): LedgerEntry {
 }
 
 // Cleanup helper
-function cleanupDir(dir: string): void {
+async function cleanupDir(dir: string): Promise<void> {
   try {
-    rmSync(dir, { recursive: true, force: true });
+    await rmSync(dir, { recursive: true, force: true });
   } catch {
     // Ignore cleanup errors
   }
@@ -117,8 +117,9 @@ describe('LedgerManager', () => {
     ledgerPath = join(tempDir, 'experiments.jsonl');
   });
 
-  afterEach(() => {
-    cleanupDir(tempDir);
+  afterEach(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await cleanupDir(tempDir);
   });
 
   describe('constructor', () => {
@@ -139,11 +140,11 @@ describe('LedgerManager', () => {
   });
 
   describe('append', () => {
-    it('should append a valid entry to the ledger', () => {
+    it('should append a valid entry to the ledger', async () => {
       const ledger = new LedgerManager({ ledgerPath });
       const entry = createEntry();
 
-      ledger.append(entry);
+      await ledger.append(entry);
 
       const content = readFileSync(ledgerPath, 'utf-8');
       const parsed = JSON.parse(content.trim());
@@ -151,31 +152,31 @@ describe('LedgerManager', () => {
       expect(parsed.status).toBe(entry.status);
     });
 
-    it('should append multiple entries as separate lines', () => {
+    it('should append multiple entries as separate lines', async () => {
       const ledger = new LedgerManager({ ledgerPath });
       const entry1 = createEntry({ branch: 'branch-1', metrics: { accuracy: 0.9 } });
       const entry2 = createEntry({ branch: 'branch-2', metrics: { accuracy: 0.95 } });
 
-      ledger.append(entry1);
-      ledger.append(entry2);
+      await ledger.append(entry1);
+      await ledger.append(entry2);
 
       const content = readFileSync(ledgerPath, 'utf-8');
       const lines = content.trim().split('\n').filter(Boolean);
       expect(lines).toHaveLength(2);
     });
 
-    it('should throw on invalid entry', () => {
+    it('should throw on invalid entry', async () => {
       const ledger = new LedgerManager({ ledgerPath });
       const invalid = createEntry({ status: 'invalid' as LedgerEntry['status'] });
 
-      expect(() => ledger.append(invalid)).toThrow();
+      await expect(ledger.append(invalid)).rejects.toThrow();
     });
 
-    it('should create ledger file if it does not exist', () => {
+    it('should create ledger file if it does not exist', async () => {
       const ledger = new LedgerManager({ ledgerPath });
       expect(existsSync(ledgerPath)).toBe(false);
 
-      ledger.append(createEntry());
+      await ledger.append(createEntry());
 
       expect(existsSync(ledgerPath)).toBe(true);
     });
@@ -190,13 +191,13 @@ describe('LedgerManager', () => {
       expect(entries).toEqual([]);
     });
 
-    it('should read all entries from ledger', () => {
+    it('should read all entries from ledger', async () => {
       const ledger = new LedgerManager({ ledgerPath });
       const entry1 = createEntry({ branch: 'branch-1', metrics: { accuracy: 0.9 } });
       const entry2 = createEntry({ branch: 'branch-2', metrics: { accuracy: 0.95 } });
 
-      ledger.append(entry1);
-      ledger.append(entry2);
+      await ledger.append(entry1);
+      await ledger.append(entry2);
 
       const entries = ledger.readAll();
 
@@ -205,17 +206,17 @@ describe('LedgerManager', () => {
       expect(entries[1]?.branch).toBe('branch-2');
     });
 
-    it('should skip malformed lines', () => {
+    it('should skip malformed lines', async () => {
       const ledger = new LedgerManager({ ledgerPath });
 
       // Append valid entry
-      ledger.append(createEntry({ branch: 'valid-branch' }));
+      await ledger.append(createEntry({ branch: 'valid-branch' }));
 
       // Append malformed line directly
       appendFileSync(ledgerPath, 'this is not json\n');
 
       // Append another valid entry
-      ledger.append(createEntry({ branch: 'valid-branch-2' }));
+      await ledger.append(createEntry({ branch: 'valid-branch-2' }));
 
       const entries = ledger.readAll();
 
@@ -224,11 +225,11 @@ describe('LedgerManager', () => {
       expect(entries[1]?.branch).toBe('valid-branch-2');
     });
 
-    it('should return entries in chronological order', () => {
+    it('should return entries in chronological order', async () => {
       const ledger = new LedgerManager({ ledgerPath });
 
       for (let i = 0; i < 5; i++) {
-        ledger.append(createEntry({ branch: `branch-${i}` }));
+        await ledger.append(createEntry({ branch: `branch-${i}` }));
       }
 
       const entries = ledger.readAll();
@@ -244,13 +245,13 @@ describe('LedgerManager', () => {
   });
 
   describe('readByStatus', () => {
-    it('should filter entries by status', () => {
+    it('should filter entries by status', async () => {
       const ledger = new LedgerManager({ ledgerPath });
 
-      ledger.append(createEntry({ status: 'success', branch: 'success-1' }));
-      ledger.append(createEntry({ status: 'failure', branch: 'failure-1' }));
-      ledger.append(createEntry({ status: 'success', branch: 'success-2' }));
-      ledger.append(createEntry({ status: 'no_improvement', branch: 'no-improvement-1' }));
+      await ledger.append(createEntry({ status: 'success', branch: 'success-1' }));
+      await ledger.append(createEntry({ status: 'failure', branch: 'failure-1' }));
+      await ledger.append(createEntry({ status: 'success', branch: 'success-2' }));
+      await ledger.append(createEntry({ status: 'no_improvement', branch: 'no-improvement-1' }));
 
       const successEntries = ledger.readByStatus('success');
       const failureEntries = ledger.readByStatus('failure');
@@ -265,9 +266,9 @@ describe('LedgerManager', () => {
       expect(noImprovementEntries[0]?.branch).toBe('no-improvement-1');
     });
 
-    it('should return empty array when no entries match', () => {
+    it('should return empty array when no entries match', async () => {
       const ledger = new LedgerManager({ ledgerPath });
-      ledger.append(createEntry({ status: 'success' }));
+      await ledger.append(createEntry({ status: 'success' }));
 
       const failureEntries = ledger.readByStatus('failure');
 
@@ -276,12 +277,12 @@ describe('LedgerManager', () => {
   });
 
   describe('readLast', () => {
-    it('should return the last entry', () => {
+    it('should return the last entry', async () => {
       const ledger = new LedgerManager({ ledgerPath });
 
-      ledger.append(createEntry({ branch: 'first' }));
-      ledger.append(createEntry({ branch: 'second' }));
-      ledger.append(createEntry({ branch: 'third' }));
+      await ledger.append(createEntry({ branch: 'first' }));
+      await ledger.append(createEntry({ branch: 'second' }));
+      await ledger.append(createEntry({ branch: 'third' }));
 
       const last = ledger.readLast();
 
@@ -298,13 +299,13 @@ describe('LedgerManager', () => {
   });
 
   describe('getBranches', () => {
-    it('should return unique branch names', () => {
+    it('should return unique branch names', async () => {
       const ledger = new LedgerManager({ ledgerPath });
 
-      ledger.append(createEntry({ branch: 'branch-a' }));
-      ledger.append(createEntry({ branch: 'branch-b' }));
-      ledger.append(createEntry({ branch: 'branch-a' })); // Duplicate
-      ledger.append(createEntry({ branch: 'branch-c' }));
+      await ledger.append(createEntry({ branch: 'branch-a' }));
+      await ledger.append(createEntry({ branch: 'branch-b' }));
+      await ledger.append(createEntry({ branch: 'branch-a' })); // Duplicate
+      await ledger.append(createEntry({ branch: 'branch-c' }));
 
       const branches = ledger.getBranches();
 
@@ -365,24 +366,27 @@ describe('LedgerManager integration scenarios', () => {
     ledgerPath = join(tempDir, 'experiments.jsonl');
   });
 
-  afterEach(() => {
-    cleanupDir(tempDir);
+  afterEach(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await cleanupDir(tempDir);
   });
 
-  it('should handle concurrent appends sequentially', () => {
+  it('should handle concurrent appends sequentially', async () => {
     const ledger = new LedgerManager({ ledgerPath });
     const entries = Array.from({ length: 100 }, (_, i) =>
       createEntry({ branch: `branch-${i}`, metrics: { run: i } })
     );
 
     // Simulate sequential appends (in practice, fs.appendFileSync is atomic for single calls)
-    entries.forEach((entry) => ledger.append(entry));
+    for (const entry of entries) {
+      await ledger.append(entry);
+    }
 
     const readEntries = ledger.readAll();
     expect(readEntries).toHaveLength(100);
   });
 
-  it('should preserve data integrity across read-write cycles', () => {
+  it('should preserve data integrity across read-write cycles', async () => {
     const ledger = new LedgerManager({ ledgerPath });
 
     // Write some entries
@@ -390,7 +394,9 @@ describe('LedgerManager integration scenarios', () => {
       createEntry({ branch: 'test-1', metrics: { accuracy: 0.8 } }),
       createEntry({ branch: 'test-2', metrics: { accuracy: 0.85 } }),
     ];
-    entries.forEach((e) => ledger.append(e));
+    for (const e of entries) {
+      await ledger.append(e);
+    }
 
     // Create new manager instance pointing to same file
     const ledger2 = new LedgerManager({ ledgerPath });

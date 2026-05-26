@@ -8,9 +8,10 @@
  * uses to enforce monotonic improvement.
  */
 
-import { appendFileSync, readFileSync, existsSync } from 'node:fs';
+import { appendFileSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
+import lockfile from 'proper-lockfile';
 
 /**
  * Status values for ledger entries.
@@ -102,19 +103,33 @@ export class LedgerManager {
   /**
    * Append a new entry to the ledger atomically.
    *
-   * Uses appendFileSync for atomicity on the line level.
+   * Uses a file lock to prevent interleaving writes from concurrent processes.
    * The entry is validated before being written.
    *
    * @param entry - The ledger entry to append
    * @throws ZodError if the entry doesn't match the schema
    */
-  append(entry: LedgerEntry): void {
+  async append(entry: LedgerEntry): Promise<void> {
     // Validate the entry
     const validated = LedgerEntrySchema.parse(entry);
 
-    // Serialize and append atomically
+    // Serialize
     const line = JSON.stringify(validated) + '\n';
-    appendFileSync(this.ledgerPath, line);
+
+    // Ensure the file exists before locking (lockfile requires the file to exist)
+    if (!existsSync(this.ledgerPath)) {
+      writeFileSync(this.ledgerPath, '');
+    }
+
+    let release: (() => Promise<void>) | null = null;
+    try {
+      release = await lockfile.lock(this.ledgerPath, { retries: { retries: 5, minTimeout: 50 } });
+      appendFileSync(this.ledgerPath, line);
+    } finally {
+      if (release) {
+        await release();
+      }
+    }
   }
 
   /**

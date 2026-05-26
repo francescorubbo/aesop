@@ -334,7 +334,7 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
         durationMs: Date.now() - startTime,
       });
 
-      ledger.append(entry);
+      await ledger.append(entry);
 
       return {
         status: 'failure',
@@ -393,7 +393,7 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
       durationMs: Date.now() - startTime,
     });
 
-    ledger.append(ledgerEntry);
+    await ledger.append(ledgerEntry);
 
     log(`Experiment ${finalStatus}. Branch: ${branchName}`);
 
