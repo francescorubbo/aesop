@@ -96,11 +96,16 @@ export async function evaluateResult(
  * them in order, attempting to merge them to the target branch.
  */
 export class MergeQueue {
+  private readonly maximize: boolean;
   private queue: Array<{
     branchName: string;
     metricValue: number;
     resultPath: string;
   }> = [];
+
+  constructor(maximize = true) {
+    this.maximize = maximize;
+  }
 
   /**
    * Add a branch to the merge queue.
@@ -112,7 +117,12 @@ export class MergeQueue {
   add(branchName: string, metricValue: number, resultPath: string): void {
     this.queue.push({ branchName, metricValue, resultPath });
     // Sort by metric value (highest first for maximize, lowest first otherwise)
-    this.queue.sort((a, b) => b.metricValue - a.metricValue);
+    this.queue.sort(
+      (a, b) =>
+        this.maximize
+          ? b.metricValue - a.metricValue // highest first
+          : a.metricValue - b.metricValue // lowest first
+    );
   }
 
   /**
