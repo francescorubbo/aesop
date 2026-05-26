@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -e
 
+# Ensure data is stored in a shared location outside the ephemeral workspace
+# to avoid exclusion by WorkspaceManager's DEFAULT_EXCLUSIONS.
+export MNIST_DATA_DIR="${MNIST_DATA_DIR:-$HOME/.cache/aesop/mnist}"
+mkdir -p "$MNIST_DATA_DIR"
+
+# Ensure dependencies are installed in the ephemeral workspace
+uv sync
+
 echo "Running static checks..."
 uvx ruff check train.py
 uvx ty check train.py

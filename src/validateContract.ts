@@ -275,12 +275,14 @@ export async function runWithValidationDetailed(
 
   // POST-CONDITION 1: Result file must exist
   if (!existsSync(resultFilePath)) {
+    const failureDetail = scriptExitedZero
+      ? 'exited successfully'
+      : `failed${scriptError ? `\n\nScript Error:\n${scriptError}` : ''}`;
+
     return createDetailedError(
       startTime,
       ValidationContractError.RESULT_FILE_NOT_FOUND,
-      `Validation script "${cmd}" ${
-        scriptExitedZero ? 'exited successfully' : 'failed'
-      }, but result file "${resultFile}" was not found at "${resultFilePath}". ` +
+      `Validation script "${cmd}" ${failureDetail}, but result file "${resultFile}" was not found at "${resultFilePath}". ` +
         'The validation script must create this file with experiment metrics.',
       { cmd, resultFile, scriptExitedZero, scriptError }
     );

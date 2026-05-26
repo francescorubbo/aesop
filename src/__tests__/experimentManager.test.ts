@@ -209,19 +209,20 @@ describe('ExperimentManager', () => {
       expect(record.status).toBe('success');
       expect(record.metrics).toEqual({ accuracy: 0.95 });
       expect(record.timestamp).toBeDefined();
-      expect(record.commitHash).toBeDefined();
+      expect(record.baseCommit).toBeDefined();
+      expect(record.hypothesisCommit).toBeDefined();
     });
 
-    it('should use current branch from git status when branch not provided', async () => {
+    it('should use provided branch', async () => {
       mockGitInstance.status.mockResolvedValue({ current: 'hypothesis/current-branch' });
 
-      await manager.logExperiment('ignored-branch', 'pending', {});
+      await manager.logExperiment('hypothesis/provided-branch', 'pending', {});
 
       const ledgerPath = join(testDir, 'experiments.jsonl');
       const content = readFileSync(ledgerPath, 'utf-8');
       const record = JSON.parse(content.trim());
 
-      expect(record.branch).toBe('hypothesis/current-branch');
+      expect(record.branch).toBe('hypothesis/provided-branch');
     });
 
     it('should use provided branch when current branch is null', async () => {
@@ -241,7 +242,7 @@ describe('ExperimentManager', () => {
       const ledgerPath = join(testDir, 'experiments.jsonl');
       writeFileSync(
         ledgerPath,
-        '{"timestamp":"2024-01-01T00:00:00.000Z","branch":"old","commitHash":"abc","status":"success","metrics":{}}\n'
+        '{"timestamp":"2024-01-01T00:00:00.000Z","branch":"old","baseCommit":"abc","hypothesisCommit":"abc","status":"success","metrics":{},\"durationMs\":0}\n'
       );
       mockGitInstance.status.mockResolvedValue({ current: 'hypothesis/new' });
 
@@ -268,9 +269,9 @@ describe('ExperimentManager', () => {
       const lines = content.trim().split('\n').filter(Boolean);
 
       expect(lines.length).toBe(3);
-      expect(lines[0]).toContain('"status":"pending"');
+      expect(lines[0]).toContain('"status":"failure"'); // pending -> failure
       expect(lines[1]).toContain('"status":"success"');
-      expect(lines[2]).toContain('"status":"failed"');
+      expect(lines[2]).toContain('"status":"failure"'); // failed -> failure
     });
 
     it('should get commit hash from git', async () => {
@@ -283,7 +284,8 @@ describe('ExperimentManager', () => {
       const content = readFileSync(ledgerPath, 'utf-8');
       const record = JSON.parse(content.trim());
 
-      expect(record.commitHash).toBe('def456789abc');
+      expect(record.baseCommit).toBe('def456789abc');
+      expect(record.hypothesisCommit).toBe('def456789abc');
     });
   });
 
@@ -448,9 +450,11 @@ describe('ExperimentManager', () => {
       const record: ExperimentRecord = {
         timestamp: '2024-01-15T10:30:00.000Z',
         branch: 'hypothesis/test',
-        commitHash: 'abc123def456',
+        baseCommit: 'abc123def456',
+        hypothesisCommit: 'abc123def456',
         status: 'success',
         metrics: { accuracy: 0.95, loss: 0.05, f1: 0.93 },
+        durationMs: 0,
       };
       writeFileSync(ledgerPath, JSON.stringify(record) + '\n');
 
@@ -458,7 +462,7 @@ describe('ExperimentManager', () => {
 
       expect(result[0]!.timestamp).toBe('2024-01-15T10:30:00.000Z');
       expect(result[0]!.branch).toBe('hypothesis/test');
-      expect(result[0]!.commitHash).toBe('abc123def456');
+      expect(result[0]!.baseCommit).toBe('abc123def456');
       expect(result[0]!.status).toBe('success');
       expect(result[0]!.metrics).toEqual({ accuracy: 0.95, loss: 0.05, f1: 0.93 });
     });
@@ -466,13 +470,15 @@ describe('ExperimentManager', () => {
     it('should support all status values', () => {
       const ledgerPath = join(testDir, 'experiments.jsonl');
 
-      for (const status of ['pending', 'success', 'failed'] as const) {
+      for (const status of ['success', 'failure', 'no_improvement'] as const) {
         const record: ExperimentRecord = {
           timestamp: new Date().toISOString(),
           branch: `hypothesis/${status}`,
-          commitHash: 'abc',
+          baseCommit: 'abc',
+          hypothesisCommit: 'abc',
           status,
           metrics: {},
+          durationMs: 0,
         };
         writeFileSync(ledgerPath, JSON.stringify(record) + '\n');
 
@@ -486,9 +492,11 @@ describe('ExperimentManager', () => {
       const record: ExperimentRecord = {
         timestamp: '2024-01-01T00:00:00.000Z',
         branch: 'test',
-        commitHash: 'abc',
+        baseCommit: 'abc',
+        hypothesisCommit: 'abc',
         status: 'success',
         metrics: {},
+        durationMs: 0,
       };
       writeFileSync(ledgerPath, JSON.stringify(record) + '\n');
 
@@ -502,9 +510,11 @@ describe('ExperimentManager', () => {
       const record = {
         timestamp: '2024-01-01T00:00:00.000Z',
         branch: 'test',
-        commitHash: 'abc',
+        baseCommit: 'abc',
+        hypothesisCommit: 'abc',
         status: 'success',
         metrics: { count: 42, ratio: 0.5 },
+        durationMs: 0,
       };
       writeFileSync(ledgerPath, JSON.stringify(record) + '\n');
 

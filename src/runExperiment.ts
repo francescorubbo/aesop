@@ -22,7 +22,7 @@ import {
 import { getModel } from '@earendil-works/pi-ai';
 
 import { WorkspaceManager } from './workspaceManager.js';
-import { runWithValidation } from './validateContract.js';
+import { runWithValidation, type ValidationResult } from './validateContract.js';
 import { checkRatchet, type RatchetResult } from './ratchet.js';
 import { LedgerManager, type LedgerEntry } from './ledger.js';
 import { createSandboxExtension } from './sandboxExtension.js';
@@ -89,20 +89,13 @@ function slugify(text: string): string {
 /**
  * Build the experiment-aware system prompt for the Pi agent.
  */
-function buildSystemPrompt(
-  hypothesis: string,
-  validateCmd: string,
-  metricKey: string,
-  workspacePath: string
-): string {
+function buildSystemPrompt(hypothesis: string, workspacePath: string): string {
   return `You are an ML experiment agent. Your task is:
 <hypothesis>${hypothesis}</hypothesis>
 
 Rules:
 - You may only edit files within this workspace. Do not read from or write to paths outside it.
-- After each set of changes, run the validate command: ${validateCmd}
-- The validate command writes eval_result.json. Your goal is to make the ${metricKey} value as high as possible.
-- When you are satisfied with your result, stop. Do not keep iterating if the metric is not improving.
+- The harness will run the validation script after each of your turns and report the result back to you. Focus on editing code to improve the metric.
 - Do not modify the validate script or eval_result.json directly.
 
 Workspace path: ${workspacePath}`;
@@ -160,6 +153,14 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
   const workspaceManager = new WorkspaceManager(resolvedProjectDir);
   const ledger = new LedgerManager({ ledgerPath });
 
+  const existing = ledger.readByStatus('success').find((e) => e.branch === branchName);
+  if (existing && !force) {
+    throw new Error(
+      `Branch "${branchName}" already has a successful ledger entry. ` +
+        `Pass force: true to re-run it.`
+    );
+  }
+
   let workspace: Awaited<ReturnType<WorkspaceManager['createEphemeralWorkspace']>> | null = null;
   let agentSession: Awaited<ReturnType<typeof createAgentSession>>['session'] | null = null;
   let agentResourceLoader: DefaultResourceLoader | null = null;
@@ -186,7 +187,7 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
     // =====================================================================
     // STEP 3: Build agent system prompt
     // =====================================================================
-    const systemPrompt = buildSystemPrompt(hypothesis, validateCmd, metricKey, workspace.path);
+    const systemPrompt = buildSystemPrompt(hypothesis, workspace.path);
 
     agentResourceLoader = new DefaultResourceLoader({
       cwd: workspace.path,
@@ -265,14 +266,18 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
 
     // Run the agent with iteration budget by running prompt multiple times
     // until maxIterations is reached or the agent signals completion
-    let iterationCount = 0;
+    let lastIteration = 0;
+    let lastInterimResult: ValidationResult | null = null;
 
     for (let i = 0; i < maxIterations; i++) {
+      lastIteration = i + 1;
       log(`Agent iteration ${i + 1}/${maxIterations}`);
       await session.prompt(`Iteration ${i + 1}. Improve ${metricKey}, then run: ${validateCmd}.`);
 
       log('Running validation after agent iteration...');
       const interim = await runWithValidation(workspace.path, validateCmd, metricKey);
+      lastInterimResult = interim;
+
       if (interim.success) {
         log(`Validation succeeded. Metrics: ${JSON.stringify(interim.metrics)}`);
         const value = interim.metrics[metricKey];
@@ -301,13 +306,18 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
       }
     }
 
-    log(`Agent finished after ${iterationCount} iterations...`);
+    log(`Agent finished after ${lastIteration} iterations...`);
 
     // =====================================================================
     // STEP 5: Validate results
     // =====================================================================
     log('Running validation...');
-    const validationResult = await runWithValidation(workspace.path, validateCmd, metricKey);
+
+    // Reuse the last interim result if we already have a successful one from the loop
+    // to avoid redundant execution of the validation script.
+    const validationResult = lastInterimResult?.success
+      ? lastInterimResult
+      : await runWithValidation(workspace.path, validateCmd, metricKey);
 
     if (!validationResult.success) {
       const error = validationResult.error ?? 'Validation failed';
@@ -370,10 +380,9 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
     // =====================================================================
     // STEP 8: Determine final status and log
     // =====================================================================
-    const finalStatus: 'success' | 'no_improvement' =
-      ratchetResult.improved && ratchetResult.bestBranch !== branchName
-        ? 'success'
-        : 'no_improvement';
+    const finalStatus: 'success' | 'no_improvement' = ratchetResult.improved
+      ? 'success'
+      : 'no_improvement';
 
     const ledgerEntry = createLedgerEntry({
       branch: branchName,

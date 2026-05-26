@@ -1,5 +1,6 @@
 # examples/mnist/train.py
 import json
+import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -36,9 +37,12 @@ def main():
         transforms.Normalize((0.1307,), (0.3081,))
     ])
     
+    # Use MNIST_DATA_DIR if provided, otherwise fallback to ./data
+    data_dir = os.environ.get('MNIST_DATA_DIR', './data')
+    
     # Download and load data
-    train_dataset = datasets.MNIST('./data', train=True, download=True, transform=transform)
-    test_dataset = datasets.MNIST('./data', train=False, transform=transform)
+    train_dataset = datasets.MNIST(data_dir, train=True, download=True, transform=transform)
+    test_dataset = datasets.MNIST(data_dir, train=False, transform=transform)
     
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=1000, shuffle=False)
