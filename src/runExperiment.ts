@@ -26,6 +26,7 @@ import { runWithValidation, type ValidationResult } from './validateContract.js'
 import { checkRatchet, type RatchetResult } from './ratchet.js';
 import { LedgerManager, type LedgerEntry } from './ledger.js';
 import { createSandboxExtension } from './sandboxExtension.js';
+import { createExperimentTracer, summariseTrace, readTrace } from './traceLogger.js';
 
 /**
  * Options for running an experiment.
@@ -73,6 +74,8 @@ export interface RunExperimentResult {
   branch: string;
   /** The ledger entry that was recorded */
   ledgerEntry: LedgerEntry;
+  /** Absolute path to the trace directory for this experiment */
+  traceDir: string;
 }
 
 /**
@@ -185,6 +188,12 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
     log(`Workspace created at: ${workspace.path}`);
 
     // =====================================================================
+    // STEP 2.5: Initialise experiment tracer
+    // =====================================================================
+    const tracer = createExperimentTracer({ branch: branchName, projectDir: resolvedProjectDir });
+    log(`Trace directory: ${tracer.traceDir}`);
+
+    // =====================================================================
     // STEP 3: Build agent system prompt
     // =====================================================================
     const systemPrompt = buildSystemPrompt(hypothesis, workspace.path);
@@ -192,7 +201,7 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
     agentResourceLoader = new DefaultResourceLoader({
       cwd: workspace.path,
       agentDir: getAgentDir(),
-      extensionFactories: [createSandboxExtension(workspace.path)],
+      extensionFactories: [createSandboxExtension(workspace.path), tracer.extension],
       systemPromptOverride: () => systemPrompt,
       appendSystemPromptOverride: () => [],
     });
@@ -278,6 +287,10 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
       const interim = await runWithValidation(workspace.path, validateCmd, metricKey);
       lastInterimResult = interim;
 
+      // Capture diff and record iteration metrics in the trace.
+      tracer.captureDiff(workspace.path, i + 1);
+      tracer.recordIteration(i + 1, interim.success ? interim.metrics : null);
+
       if (interim.success) {
         log(`Validation succeeded. Metrics: ${JSON.stringify(interim.metrics)}`);
         const value = interim.metrics[metricKey];
@@ -324,6 +337,15 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
 
       log(`Validation failed: ${error}`);
 
+      // Capture final cumulative diff even on failure.
+      tracer.captureDiff(workspace.path, 'final', syncResult.commitHash);
+      const traceSummary = summariseTrace(readTrace(tracer.traceFile));
+      log(
+        `Trace summary: ${traceSummary.toolCallCount} tool calls, ` +
+          `tools=[${traceSummary.toolsUsed.join(', ')}], ` +
+          `${traceSummary.iterationCount} iterations`
+      );
+
       const entry = createLedgerEntry({
         branch: branchName,
         baseCommit: syncResult.commitHash,
@@ -340,6 +362,7 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
         status: 'failure',
         branch: branchName,
         ledgerEntry: entry,
+        traceDir: tracer.traceDir,
       };
     }
 
@@ -397,11 +420,21 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
 
     log(`Experiment ${finalStatus}. Branch: ${branchName}`);
 
+    // Capture final cumulative diff (base commit → experiment end) and log summary.
+    tracer.captureDiff(workspace.path, 'final', syncResult.commitHash);
+    const traceSummary = summariseTrace(readTrace(tracer.traceFile));
+    log(
+      `Trace: ${traceSummary.toolCallCount} tool calls, ` +
+        `tools=[${traceSummary.toolsUsed.join(', ')}], ` +
+        `${traceSummary.iterationCount} iterations — see ${tracer.traceDir}`
+    );
+
     return {
       status: finalStatus,
       metrics: validationResult.metrics,
       branch: branchName,
       ledgerEntry,
+      traceDir: tracer.traceDir,
     };
   } finally {
     // =====================================================================
