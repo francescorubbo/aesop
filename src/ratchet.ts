@@ -193,17 +193,26 @@ export function getBestMetric(
   metricKey: string,
   options: RatchetOptions = {}
 ): { value: number; branch: string; commit: string } | null {
-  const result = checkRatchet(ledgerPath, metricKey, 0, options);
+  const { maximize = true } = options;
+  const resolvedPath = resolve(ledgerPath);
 
-  if (result.bestBranch === '' && result.bestCommit === '') {
-    return null;
+  if (!existsSync(resolvedPath)) return null;
+
+  const ledger = new LedgerManager({ ledgerPath: resolvedPath });
+  const successes = ledger.readByStatus('success');
+
+  let best: { value: number; branch: string; commit: string } | null = null;
+
+  for (const entry of successes) {
+    const value = entry.metrics[metricKey];
+    if (value === undefined) continue;
+
+    if (best === null || (maximize && value > best.value) || (!maximize && value < best.value)) {
+      best = { value, branch: entry.branch, commit: entry.hypothesisCommit };
+    }
   }
 
-  return {
-    value: result.best,
-    branch: result.bestBranch,
-    commit: result.bestCommit,
-  };
+  return best;
 }
 
 /**

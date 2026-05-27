@@ -10,6 +10,9 @@
  */
 
 import { Command, Option } from 'commander';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const { version } = require('../package.json') as { version: string };
 import {
   SessionManager,
   InteractiveMode,
@@ -145,7 +148,7 @@ const program = new Command();
 program
   .name('aesop')
   .description('ML experiment orchestration CLI powered by Pi')
-  .version('0.3.0')
+  .version(version)
   .addOption(new Option('-m, --model <model>', 'Model to use (e.g., anthropic/claude-opus-4-5)'))
   .addOption(
     new Option('-t, --thinking <level>', 'Thinking level').choices([
