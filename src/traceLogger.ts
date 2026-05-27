@@ -29,13 +29,7 @@
  */
 
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
-import {
-  appendFileSync,
-  existsSync,
-  mkdirSync,
-  writeFileSync,
-  readFileSync,
-} from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { execSync } from 'node:child_process';
 
@@ -55,11 +49,18 @@ const MAX_OUTPUT_BYTES = 8_192;
 
 /** Discriminated union of events written to trace.jsonl. */
 export type TraceEvent =
-  | { t: string; kind: 'tool_call';   tool: string; input: unknown }
+  | { t: string; kind: 'tool_call'; tool: string; input: unknown }
   | { t: string; kind: 'tool_result'; tool: string; output: string; truncated: boolean }
-  | { t: string; kind: 'message';     role: 'assistant'; text: string }
-  | { t: string; kind: 'iteration';   n: number; metrics: Record<string, number> | null }
-  | { t: string; kind: 'diff';        iteration: number | 'final'; file: string; linesAdded: number; linesRemoved: number };
+  | { t: string; kind: 'message'; role: 'assistant'; text: string }
+  | { t: string; kind: 'iteration'; n: number; metrics: Record<string, number> | null }
+  | {
+      t: string;
+      kind: 'diff';
+      iteration: number | 'final';
+      file: string;
+      linesAdded: number;
+      linesRemoved: number;
+    };
 
 /** Returned by {@link createExperimentTracer}. */
 export interface ExperimentTracer {
@@ -141,9 +142,7 @@ export function createExperimentTracer(opts: {
     if (Buffer.byteLength(text, 'utf-8') <= MAX_OUTPUT_BYTES) {
       return { output: text, truncated: false };
     }
-    const truncated = Buffer.from(text, 'utf-8')
-      .slice(0, MAX_OUTPUT_BYTES)
-      .toString('utf-8');
+    const truncated = Buffer.from(text, 'utf-8').slice(0, MAX_OUTPUT_BYTES).toString('utf-8');
     return { output: truncated + '\n…[truncated]', truncated: true };
   }
 
@@ -181,9 +180,8 @@ export function createExperimentTracer(opts: {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (_pi as any).on('tool_result', async (event: { output?: unknown }) => {
-          const rawOutput = typeof event.output === 'string'
-            ? event.output
-            : JSON.stringify(event.output ?? '');
+          const rawOutput =
+            typeof event.output === 'string' ? event.output : JSON.stringify(event.output ?? '');
           const { output, truncated } = truncate(rawOutput);
           writeEvent({
             t: now(),
@@ -212,11 +210,7 @@ export function createExperimentTracer(opts: {
   // captureDiff
   // ------------------------------------------------------------------
 
-  function captureDiff(
-    workspacePath: string,
-    label: number | 'final',
-    baseRef = 'HEAD~1',
-  ): void {
+  function captureDiff(workspacePath: string, label: number | 'final', baseRef = 'HEAD~1'): void {
     const filename = label === 'final' ? 'final.diff' : `iter-${label}.diff`;
     const diffPath = join(traceDir, filename);
 
@@ -225,9 +219,7 @@ export function createExperimentTracer(opts: {
       // `git diff <baseRef>` shows the working-tree delta from that ref.
       // If HEAD~1 doesn't exist (first commit) fall back to the empty-tree hash.
       const ref =
-        baseRef === 'HEAD~1'
-          ? safeHeadParent(workspacePath) ?? EMPTY_TREE_HASH
-          : baseRef;
+        baseRef === 'HEAD~1' ? (safeHeadParent(workspacePath) ?? EMPTY_TREE_HASH) : baseRef;
 
       diffContent = execSync(`git diff ${ref}`, {
         cwd: workspacePath,
