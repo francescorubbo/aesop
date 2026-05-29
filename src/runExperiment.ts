@@ -324,13 +324,15 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
     // =====================================================================
     // STEP 5: Validate results
     // =====================================================================
-    log('Running validation...');
 
     // Reuse the last interim result if we already have a successful one from the loop
     // to avoid redundant execution of the validation script.
     const validationResult = lastInterimResult?.success
       ? lastInterimResult
-      : await runWithValidation(workspace.path, validateCmd, metricKey);
+      : await (async () => {
+          log('Running validation...');
+          return runWithValidation(workspace.path, validateCmd, metricKey);
+        })();
 
     if (!validationResult.success) {
       const error = validationResult.error ?? 'Validation failed';
