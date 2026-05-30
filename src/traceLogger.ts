@@ -74,7 +74,7 @@ export interface ExperimentTracer {
    * Record that an iteration completed with the given validation metrics
    * (or null if validation did not produce a metric value).
    */
-  recordIteration(n: number, metrics: Record<string, number> | null): void;
+  recordIteration(_n: number, _metrics: Record<string, number> | null): void;
 
   /**
    * Capture a git diff from the workspace and write it to a `.diff` file.
@@ -85,7 +85,7 @@ export interface ExperimentTracer {
    *                        the final diff pass the base commit hash so the
    *                        whole experiment delta is shown)
    */
-  captureDiff(workspacePath: string, label: number | 'final', baseRef?: string): void;
+  captureDiff(_workspacePath: string, _label: number | 'final', _baseRef?: string): void;
 
   /**
    * Absolute path to this experiment's trace directory.

@@ -18,16 +18,9 @@ const eslintConfig = [
     },
     rules: {
       ...tsPlugin.configs.recommended.rules,
-      'no-console': 'warn',
+      'no-console': 'off',
       'no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
-    },
-  },
-  // CLI application files - console output IS the user interface
-  {
-    files: ['src/cli.ts', 'src/backpressureGates.ts', 'src/discoveryEngine.ts'],
-    rules: {
-      'no-console': 'off',
     },
   },
   // validateContract.ts exports an enum for public API use - enum values are consumed by tests

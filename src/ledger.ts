@@ -154,7 +154,6 @@ export class LedgerManager {
         const parsed = LedgerEntrySchema.parse(JSON.parse(line));
         entries.push(parsed);
       } catch {
-        // Skip malformed lines with a console warning
         console.warn(`[LedgerManager] Skipping malformed line: ${line.slice(0, 100)}...`);
       }
     }
