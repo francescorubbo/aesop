@@ -257,13 +257,17 @@ program
         console.log(`[Aesop] Experiment completed: ${result.status}`);
 
         if (result.status === 'success') {
-          console.log('[Aesop] New best result achieved!');
+          if (result.ledgerEntry.globalBest) {
+            console.log('[Aesop] New global best result achieved!');
+          } else {
+            console.log('[Aesop] Improved over baseline.');
+          }
           if (result.metrics) {
             console.log(`[Aesop] Metrics: ${JSON.stringify(result.metrics)}`);
           }
           process.exit(0);
         } else if (result.status === 'no_improvement') {
-          console.log('[Aesop] No improvement over previous best.');
+          console.log('[Aesop] Validation passed but no improvement over baseline.');
           process.exit(0);
         } else {
           console.log('[Aesop] Experiment failed.');

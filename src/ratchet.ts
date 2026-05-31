@@ -1,36 +1,34 @@
 /**
  * Ratchet
  *
- * Enforces monotonic improvement by comparing new experiment results against
- * the best historical values recorded in the ledger.
+ * Enforces improvement by comparing new experiment results against
+ * a provided baseline value (typically from the run's own initial measurement).
  *
  * The ratchet acts as a gate: an experiment is only considered a true
- * "success" if it strictly improves on the best known value for the
- * target metric. Experiments that validate but don't improve are marked
- * as "no_improvement".
+ * "success" if it strictly improves on its own baseline. Experiments that
+ * validate but don't improve are marked as "no_improvement".
  *
- * This prevents the experiment history from degrading over time and ensures
- * each successful experiment represents genuine progress.
+ * A separate function (`getGlobalBest`) handles querying the all-time best
+ * for the globalBest flag on ledger entries.
+ *
+ * This design supports ablation studies where each run's relevant comparison
+ * is its own controlled baseline, not a global best from unrelated experiments.
  */
 
-import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { LedgerManager, type LedgerEntry } from './ledger.js';
+import { existsSync } from 'node:fs';
+import { LedgerManager } from './ledger.js';
 
 /**
  * Result of checking the ratchet against a new value.
  */
 export interface RatchetResult {
-  /** Whether the current value strictly improves on the best */
+  /** Whether the current value strictly improves on the baseline */
   improved: boolean;
   /** The value that was checked */
   current: number;
-  /** The best value found in the ledger (null if no successful experiments) */
-  best: number;
-  /** The branch that achieved the best value */
-  bestBranch: string;
-  /** The commit hash that achieved the best value */
-  bestCommit: string;
+  /** The baseline value we compared against */
+  baseline: number;
 }
 
 /**
@@ -39,156 +37,71 @@ export interface RatchetResult {
 export interface RatchetOptions {
   /** Whether to maximize (true) or minimize (false) the metric. Default: true */
   maximize?: boolean;
-  /** Custom ledger path. Defaults to 'experiments.jsonl' in cwd */
-  ledgerPath?: string;
 }
 
 /**
- * Check if a new metric value improves upon the best recorded value.
+ * Check if a new metric value improves upon the run's baseline.
  *
- * Reads all successful experiments from the ledger, finds the maximum
- * (or minimum if minimize=true) value for the given metric key, and
- * returns whether the current value beats it.
+ * This replaces the previous global-best comparison with a local baseline
+ * comparison. For ablation studies, each run's baseline (measured at the
+ * start of the run) is the appropriate comparison point, not the global best
+ * from unrelated experiments.
  *
- * If no successful experiments exist for the metric, the current value
- * is considered an improvement by default.
- *
- * @param ledgerPath - Path to the experiments.jsonl ledger
- * @param metricKey - The metric to compare (e.g., 'accuracy', 'loss')
- * @param currentValue - The new value to compare against the best
- * @param options - Optional configuration (maximize, custom ledger path)
- * @returns RatchetResult with improvement status and details
+ * @param baselineValue - The baseline metric value to compare against
+ * @param currentValue - The new value to check for improvement
+ * @param options - Optional configuration (maximize)
+ * @returns RatchetResult with improvement status
  *
  * @example
  * ```typescript
- * // Check if 0.96 accuracy beats the best known accuracy
- * const result = checkRatchet('experiments.jsonl', 'accuracy', 0.96);
+ * // Check if 0.96 accuracy beats the run's baseline of 0.90
+ * const result = checkRatchet(0.90, 0.96);
  *
  * if (result.improved) {
- *   console.log(`New best! ${result.current} > ${result.best}`);
- *   console.log(`Previous best was from branch: ${result.bestBranch}`);
+ *   console.log(`Improved from ${result.baseline} to ${result.current}`);
  * } else {
- *   console.log(`No improvement. Best: ${result.best}`);
- *   // Record as 'no_improvement' status instead of 'success'
+ *   console.log(`No improvement over baseline ${result.baseline}`);
  * }
- * ```
- *
- * @example
- * ```typescript
- * // Check for metric minimization (e.g., loss)
- * const result = checkRatchet('experiments.jsonl', 'loss', 0.02, {
- *   maximize: false,
- * });
  * ```
  */
 export function checkRatchet(
-  ledgerPath: string,
-  metricKey: string,
+  baselineValue: number,
   currentValue: number,
   options: RatchetOptions = {}
 ): RatchetResult {
   const { maximize = true } = options;
-  const resolvedPath = resolve(ledgerPath);
 
-  // If ledger doesn't exist, current value is automatically an improvement
-  if (!existsSync(resolvedPath)) {
-    return {
-      improved: true,
-      current: currentValue,
-      best: currentValue,
-      bestBranch: '',
-      bestCommit: '',
-    };
-  }
-
-  const content = readFileSync(resolvedPath, 'utf-8');
-  const lines = content.trim().split('\n').filter(Boolean);
-
-  let bestValue: number | null = null;
-  let bestBranch = '';
-  let bestCommit = '';
-
-  // Iterate through all successful experiments
-  for (const line of lines) {
-    try {
-      const entry = JSON.parse(line) as LedgerEntry;
-
-      // Only consider successful experiments
-      if (entry.status !== 'success') {
-        continue;
-      }
-
-      const metricValue = entry.metrics[metricKey];
-
-      // Skip entries without this metric
-      if (metricValue === undefined) {
-        continue;
-      }
-
-      // Update best if this is better
-      if (bestValue === null) {
-        bestValue = metricValue;
-        bestBranch = entry.branch;
-        bestCommit = entry.hypothesisCommit;
-      } else if (maximize && metricValue > bestValue) {
-        bestValue = metricValue;
-        bestBranch = entry.branch;
-        bestCommit = entry.hypothesisCommit;
-      } else if (!maximize && metricValue < bestValue) {
-        bestValue = metricValue;
-        bestBranch = entry.branch;
-        bestCommit = entry.hypothesisCommit;
-      }
-    } catch {
-      // Skip malformed lines
-      continue;
-    }
-  }
-
-  // If no successful experiments found, current value is an improvement
-  if (bestValue === null) {
-    return {
-      improved: true,
-      current: currentValue,
-      best: currentValue,
-      bestBranch: '',
-      bestCommit: '',
-    };
-  }
-
-  // Check if current value is strictly better
-  const improved = maximize ? currentValue > bestValue : currentValue < bestValue;
+  const improved = maximize ? currentValue > baselineValue : currentValue < baselineValue;
 
   return {
     improved,
     current: currentValue,
-    best: bestValue,
-    bestBranch,
-    bestCommit,
+    baseline: baselineValue,
   };
 }
 
 /**
- * Get the best value for a metric from the ledger.
+ * Get the best value for a metric from successful ledger entries.
  *
- * A convenience function that returns the current best without
- * comparing against a new value.
+ * A convenience function that returns the current best value across all
+ * successful experiments. Used to determine the globalBest flag for ledger
+ * entries.
  *
  * @param ledgerPath - Path to the experiments.jsonl ledger
  * @param metricKey - The metric to find the best value for
- * @param options - Optional configuration (maximize, custom ledger path)
+ * @param options - Optional configuration (maximize)
  * @returns The best value, or null if no successful experiments exist
  *
  * @example
  * ```typescript
- * const best = getBestMetric('experiments.jsonl', 'accuracy');
+ * const best = getGlobalBest('experiments.jsonl', 'accuracy');
  * if (best !== null) {
  *   console.log(`Current best accuracy: ${best.value}`);
  *   console.log(`Achieved by: ${best.branch}`);
  * }
  * ```
  */
-export function getBestMetric(
+export function getGlobalBest(
   ledgerPath: string,
   metricKey: string,
   options: RatchetOptions = {}
@@ -216,40 +129,43 @@ export function getBestMetric(
 }
 
 /**
- * Create a ratchet checker using a LedgerManager instance.
+ * Determine whether a value is a new global best.
  *
- * Useful when you already have a LedgerManager and want to use
- * ratchet functionality without re-specifying paths.
- *
- * @param ledger - The LedgerManager instance
+ * @param ledgerPath - Path to the experiments.jsonl ledger
+ * @param metricKey - The metric to check
+ * @param value - The value to compare against global best
  * @param options - Optional configuration (maximize)
- * @returns A configured checkRatchet function bound to the ledger
+ * @returns true if this value is a new global best
  *
  * @example
  * ```typescript
- * const ledger = new LedgerManager();
- * const checkRatchetForLedger = createRatchetChecker(ledger, { maximize: true });
- *
- * const result = checkRatchetForLedger('accuracy', 0.97);
+ * const isGlobalBest = isNewGlobalBest('experiments.jsonl', 'accuracy', 0.97);
+ * // Returns true if 0.97 beats all prior successful entries
  * ```
  */
-export function createRatchetChecker(
-  ledger: LedgerManager,
-  options: Pick<RatchetOptions, 'maximize'> = {}
-): (_metric: string, _value: number) => RatchetResult {
-  const ledgerPath = ledger.getPath();
-  const { maximize = true } = options;
+export function isNewGlobalBest(
+  ledgerPath: string,
+  metricKey: string,
+  value: number,
+  options: RatchetOptions = {}
+): boolean {
+  const currentBest = getGlobalBest(ledgerPath, metricKey, options);
 
-  return (metric: string, value: number) => {
-    return checkRatchet(ledgerPath, metric, value, { maximize });
-  };
+  if (currentBest === null) {
+    // No prior successful entries, this is the new best
+    return true;
+  }
+
+  const { maximize = true } = options;
+  return maximize ? value > currentBest.value : value < currentBest.value;
 }
 
 /**
  * Determine the appropriate status for an experiment result.
  *
- * Given the ratchet check result, returns the appropriate status:
- * - "success" if the experiment improved on the best
+ * Given the ratchet check result (comparing against the run's baseline),
+ * returns the appropriate status:
+ * - "success" if the experiment improved on its baseline
  * - "no_improvement" if validation passed but no improvement was made
  * - "failure" if the experiment encountered an error (passed separately)
  *
@@ -259,7 +175,7 @@ export function createRatchetChecker(
  *
  * @example
  * ```typescript
- * const ratchetResult = checkRatchet(ledgerPath, 'accuracy', newAccuracy);
+ * const ratchetResult = checkRatchet(baselineValue, newAccuracy);
  * const status = determineStatus(ratchetResult, validationPassed = true);
  *
  * ledger.append({
