@@ -362,13 +362,23 @@ program
 const trace = program.command('trace').description('Inspect experiment traces');
 
 /**
+ * Normalize a branch name for matching against directory names.
+ * Directory names use `__` for `/` (since branch names with `/` get encoded).
+ * This converts user input (with `/`) to directory format (with `__`).
+ */
+function toDirName(branchName: string): string {
+  // Replace slashes with the encoding used by createExperimentTracer
+  return branchName.replace(/\//g, '__').replace(/[^a-zA-Z0-9_.-]/g, '-');
+}
+
+/**
  * Find a trace directory by branch name (supports prefix and suffix matching).
  *
  * Examples:
- *   - "hypothesis/test-lr" matches "hypothesis/test-lr" (exact)
- *   - "test-lr" matches "hypothesis/test-lr" (suffix after /)
- *   - "hypothesis" matches "hypothesis/test" (prefix with /)
- *   - "test" matches "hypothesis/test" (direct prefix)
+ *   - "hypothesis/test-lr" matches "hypothesis__test-lr" (exact, normalized)
+ *   - "test-lr" matches "hypothesis__test-lr" (suffix after /)
+ *   - "hypothesis" matches "hypothesis__test" (prefix with /)
+ *   - "test" matches "test-branch" (direct prefix)
  */
 function findTraceDir(projectDir: string, branchName: string): string | null {
   const traceRoot = resolve(projectDir, TRACE_ROOT);
@@ -376,17 +386,20 @@ function findTraceDir(projectDir: string, branchName: string): string | null {
 
   const dirs = readdirSync(traceRoot).filter((d) => statSync(join(traceRoot, d)).isDirectory());
 
-  // Direct match first
-  if (dirs.includes(branchName)) {
-    return join(traceRoot, branchName);
+  // Normalize user input to directory format (hypothesis/test -> hypothesis__test)
+  const normalizedInput = toDirName(branchName);
+
+  // Direct match first (normalized)
+  if (dirs.includes(normalizedInput)) {
+    return join(traceRoot, normalizedInput);
   }
 
-  // Flexible matching: prefix, suffix, or contains
+  // Flexible matching: prefix, suffix, or contains (all on normalized names)
   const matches = dirs.filter((d) => {
-    if (d === branchName) return true;
-    if (d.startsWith(branchName + '/')) return true; // "hypothesis" matches "hypothesis/test"
-    if (d.endsWith('/' + branchName)) return true; // "test-lr" matches "hypothesis/test-lr"
-    if (d.startsWith(branchName)) return true; // "test" matches "test-branch"
+    if (d === normalizedInput) return true;
+    if (d.startsWith(normalizedInput + '/')) return true; // "hypothesis" matches "hypothesis/test"
+    if (d.endsWith('/' + normalizedInput)) return true; // "test-lr" matches "hypothesis/test-lr"
+    if (d.startsWith(normalizedInput)) return true; // "test" matches "test-branch"
     return false;
   });
 
