@@ -7,5 +7,8 @@ coverage/
 # Aesop workspaces and managed repos
 .aesop/
 
+# Experiment ledgers
+**/experiments.jsonl
+
 # Example data
 examples/mnist/data/
