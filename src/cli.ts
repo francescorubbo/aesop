@@ -436,11 +436,10 @@ function formatMetric(metrics: Record<string, number> | null): string {
 }
 
 /**
- * Truncate a string to maxWidth, appending ellipsis if truncated.
+ * Pad a value to at least minWidth, useful for right-aligned numbers.
  */
-function truncate(str: string, maxWidth: number): string {
-  if (str.length <= maxWidth) return str;
-  return str.slice(0, maxWidth - 1) + '…';
+function padRight(val: string, minWidth: number): string {
+  return val.length >= minWidth ? val : val.padEnd(minWidth);
 }
 
 trace
@@ -481,11 +480,13 @@ trace
       return;
     }
 
-    const COL_BRANCH = 40;
+    // Determine column widths based on content
+    const maxBranchLen = Math.max(...entries.map((e) => e.branch.length), 6); // min "Branch"
+    const COL_BRANCH = maxBranchLen;
     const COL_ITER = 12;
     const COL_TOOLS = 12;
     const COL_METRIC = 10;
-    const SEP = ' ';
+    const SEP = '  ';
 
     const header =
       'Branch'.padEnd(COL_BRANCH) +
@@ -502,9 +503,9 @@ trace
     console.log('-'.repeat(header.length));
 
     for (const entry of entries) {
-      const branch = truncate(entry.branch, COL_BRANCH).padEnd(COL_BRANCH);
-      const iterations = entry.iterationCount.toString().padEnd(COL_ITER);
-      const toolCalls = entry.toolCallCount.toString().padEnd(COL_TOOLS);
+      const branch = entry.branch.padEnd(COL_BRANCH);
+      const iterations = padRight(entry.iterationCount.toString(), COL_ITER);
+      const toolCalls = padRight(entry.toolCallCount.toString(), COL_TOOLS);
       const metric = entry.finalMetric.padEnd(COL_METRIC);
       const hasDiff = entry.hasFinalDiff ? '✓' : '';
       console.log(`${branch}${SEP}${iterations}${SEP}${toolCalls}${SEP}${metric}${SEP}${hasDiff}`);
