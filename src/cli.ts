@@ -435,6 +435,14 @@ function formatMetric(metrics: Record<string, number> | null): string {
   return first?.toFixed(4) ?? '—';
 }
 
+/**
+ * Truncate a string to maxWidth, appending ellipsis if truncated.
+ */
+function truncate(str: string, maxWidth: number): string {
+  if (str.length <= maxWidth) return str;
+  return str.slice(0, maxWidth - 1) + '…';
+}
+
 trace
   .command('list')
   .description('List all experiments with trace directories')
@@ -473,23 +481,33 @@ trace
       return;
     }
 
+    const COL_BRANCH = 40;
+    const COL_ITER = 12;
+    const COL_TOOLS = 12;
+    const COL_METRIC = 10;
+    const SEP = ' ';
+
+    const header =
+      'Branch'.padEnd(COL_BRANCH) +
+      SEP +
+      'Iterations'.padEnd(COL_ITER) +
+      SEP +
+      'Tool Calls'.padEnd(COL_TOOLS) +
+      SEP +
+      'Metric'.padEnd(COL_METRIC) +
+      SEP +
+      'Final Diff';
     console.log('');
-    console.log(
-      'Branch'.padEnd(40) +
-        'Iterations'.padEnd(12) +
-        'Tool Calls'.padEnd(12) +
-        'Metric'.padEnd(10) +
-        'Final Diff'
-    );
-    console.log('-'.repeat(90));
+    console.log(header);
+    console.log('-'.repeat(header.length));
 
     for (const entry of entries) {
-      const branch = entry.branch.padEnd(40);
-      const iterations = entry.iterationCount.toString().padEnd(12);
-      const toolCalls = entry.toolCallCount.toString().padEnd(12);
-      const metric = entry.finalMetric.padEnd(10);
+      const branch = truncate(entry.branch, COL_BRANCH).padEnd(COL_BRANCH);
+      const iterations = entry.iterationCount.toString().padEnd(COL_ITER);
+      const toolCalls = entry.toolCallCount.toString().padEnd(COL_TOOLS);
+      const metric = entry.finalMetric.padEnd(COL_METRIC);
       const hasDiff = entry.hasFinalDiff ? '✓' : '';
-      console.log(`${branch}${iterations}${toolCalls}${metric}${hasDiff}`);
+      console.log(`${branch}${SEP}${iterations}${SEP}${toolCalls}${SEP}${metric}${SEP}${hasDiff}`);
     }
 
     console.log('');
