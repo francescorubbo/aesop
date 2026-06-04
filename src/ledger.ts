@@ -42,6 +42,8 @@ export const LedgerEntrySchema = z.object({
   error: z.string().optional(),
   /** Duration of the experiment in milliseconds */
   durationMs: z.number().int().nonnegative(),
+  /** Whether this run achieved a new global best for the primary metric */
+  globalBest: z.boolean().optional(),
 });
 
 export type LedgerEntry = z.infer<typeof LedgerEntrySchema>;

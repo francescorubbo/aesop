@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   checkRatchet,
-  getBestMetric,
-  createRatchetChecker,
+  getGlobalBest,
+  isNewGlobalBest,
   determineStatus,
   type RatchetResult,
 } from '../ratchet';
@@ -52,252 +52,58 @@ function cleanupDir(dir: string): void {
 }
 
 describe('checkRatchet', () => {
-  let tempDir: string;
-  let ledgerPath: string;
-
-  beforeEach(() => {
-    tempDir = createTempDir();
-    ledgerPath = join(tempDir, 'experiments.jsonl');
-  });
-
-  afterEach(() => {
-    cleanupDir(tempDir);
-  });
-
-  describe('empty ledger behavior', () => {
-    it('should consider first value as improvement when ledger is empty', () => {
-      const result = checkRatchet(ledgerPath, 'accuracy', 0.95);
+  describe('baseline comparison (maximize)', () => {
+    it('should return improved=true when value beats baseline', () => {
+      const result = checkRatchet(0.9, 0.95);
 
       expect(result.improved).toBe(true);
       expect(result.current).toBe(0.95);
-      expect(result.best).toBe(0.95);
+      expect(result.baseline).toBe(0.9);
     });
 
-    it('should return empty best branch when ledger is empty', () => {
-      const result = checkRatchet(ledgerPath, 'accuracy', 0.95);
+    it('should return improved=false when value does not beat baseline', () => {
+      const result = checkRatchet(0.95, 0.9);
 
-      expect(result.bestBranch).toBe('');
-      expect(result.bestCommit).toBe('');
+      expect(result.improved).toBe(false);
+      expect(result.current).toBe(0.9);
+      expect(result.baseline).toBe(0.95);
     });
 
-    it('should handle non-existent ledger file', () => {
-      const result = checkRatchet('/nonexistent/path/experiments.jsonl', 'accuracy', 0.85);
-
-      expect(result.improved).toBe(true);
-      expect(result.best).toBe(0.85);
-    });
-  });
-
-  describe('maximize mode (default)', () => {
-    it('should return improved=true when value beats best', () => {
-      // Add existing best
-      writeEntries(ledgerPath, [
-        createEntry({ branch: 'prev-branch', metrics: { accuracy: 0.9 } }),
-      ]);
-
-      const result = checkRatchet(ledgerPath, 'accuracy', 0.95);
-
-      expect(result.improved).toBe(true);
-      expect(result.current).toBe(0.95);
-      expect(result.best).toBe(0.9);
-      expect(result.bestBranch).toBe('prev-branch');
-    });
-
-    it('should return improved=false when value does not beat best', () => {
-      writeEntries(ledgerPath, [
-        createEntry({ branch: 'best-branch', metrics: { accuracy: 0.98 } }),
-      ]);
-
-      const result = checkRatchet(ledgerPath, 'accuracy', 0.95);
+    it('should return improved=false when value equals baseline (strict inequality)', () => {
+      const result = checkRatchet(0.95, 0.95);
 
       expect(result.improved).toBe(false);
       expect(result.current).toBe(0.95);
-      expect(result.best).toBe(0.98);
-      expect(result.bestBranch).toBe('best-branch');
-    });
-
-    it('should return improved=false when value equals best (strict inequality)', () => {
-      writeEntries(ledgerPath, [createEntry({ branch: 'existing', metrics: { accuracy: 0.95 } })]);
-
-      const result = checkRatchet(ledgerPath, 'accuracy', 0.95);
-
-      expect(result.improved).toBe(false);
-      expect(result.best).toBe(0.95);
-    });
-
-    it('should find best value across multiple entries', () => {
-      writeEntries(ledgerPath, [
-        createEntry({ branch: 'branch-a', metrics: { accuracy: 0.7 } }),
-        createEntry({ branch: 'branch-b', metrics: { accuracy: 0.85 } }),
-        createEntry({ branch: 'branch-c', metrics: { accuracy: 0.8 } }),
-      ]);
-
-      const result = checkRatchet(ledgerPath, 'accuracy', 0.5);
-
-      expect(result.improved).toBe(false);
-      expect(result.best).toBe(0.85);
-      expect(result.bestBranch).toBe('branch-b');
-    });
-
-    it('should beat the current best and return new best', () => {
-      writeEntries(ledgerPath, [
-        createEntry({ branch: 'branch-a', metrics: { accuracy: 0.7 } }),
-        createEntry({ branch: 'branch-b', metrics: { accuracy: 0.85 } }),
-      ]);
-
-      const result = checkRatchet(ledgerPath, 'accuracy', 0.9);
-
-      expect(result.improved).toBe(true);
-      expect(result.best).toBe(0.85); // Best in ledger
-      expect(result.current).toBe(0.9); // New value that beat it
+      expect(result.baseline).toBe(0.95);
     });
   });
 
-  describe('minimize mode', () => {
+  describe('baseline comparison (minimize)', () => {
     it('should return improved=true when value is lower', () => {
-      writeEntries(ledgerPath, [createEntry({ branch: 'prev', metrics: { loss: 0.1 } })]);
-
-      const result = checkRatchet(ledgerPath, 'loss', 0.05, { maximize: false });
+      const result = checkRatchet(0.1, 0.05, { maximize: false });
 
       expect(result.improved).toBe(true);
-      expect(result.best).toBe(0.1);
       expect(result.current).toBe(0.05);
+      expect(result.baseline).toBe(0.1);
     });
 
     it('should return improved=false when value is higher', () => {
-      writeEntries(ledgerPath, [createEntry({ branch: 'best', metrics: { loss: 0.02 } })]);
-
-      const result = checkRatchet(ledgerPath, 'loss', 0.05, { maximize: false });
+      const result = checkRatchet(0.05, 0.1, { maximize: false });
 
       expect(result.improved).toBe(false);
-      expect(result.best).toBe(0.02);
+      expect(result.current).toBe(0.1);
+      expect(result.baseline).toBe(0.05);
     });
 
-    it('should find lowest value as best in minimize mode', () => {
-      writeEntries(ledgerPath, [
-        createEntry({ branch: 'branch-a', metrics: { loss: 0.05 } }),
-        createEntry({ branch: 'branch-b', metrics: { loss: 0.02 } }),
-        createEntry({ branch: 'branch-c', metrics: { loss: 0.08 } }),
-      ]);
-
-      const result = checkRatchet(ledgerPath, 'loss', 0.5, { maximize: false });
+    it('should return improved=false when value equals baseline', () => {
+      const result = checkRatchet(0.05, 0.05, { maximize: false });
 
       expect(result.improved).toBe(false);
-      expect(result.best).toBe(0.02);
-      expect(result.bestBranch).toBe('branch-b');
-    });
-  });
-
-  describe('status filtering', () => {
-    it('should only consider entries with status "success"', () => {
-      writeEntries(ledgerPath, [
-        createEntry({ branch: 'success-1', status: 'success', metrics: { accuracy: 0.9 } }),
-        createEntry({ branch: 'failure-1', status: 'failure', metrics: { accuracy: 0.95 } }),
-        createEntry({
-          branch: 'no-improvement-1',
-          status: 'no_improvement',
-          metrics: { accuracy: 0.8 },
-        }),
-        createEntry({ branch: 'success-2', status: 'success', metrics: { accuracy: 0.85 } }),
-      ]);
-
-      const result = checkRatchet(ledgerPath, 'accuracy', 0.7);
-
-      // Should only consider successful entries: 0.9 and 0.85, so best is 0.9
-      expect(result.improved).toBe(false);
-      expect(result.best).toBe(0.9);
-      expect(result.bestBranch).toBe('success-1');
-    });
-
-    it('should consider current value as improvement if no successful entries exist', () => {
-      writeEntries(ledgerPath, [
-        createEntry({ branch: 'failed-1', status: 'failure', metrics: { accuracy: 0.99 } }),
-        createEntry({
-          branch: 'no-improve-1',
-          status: 'no_improvement',
-          metrics: { accuracy: 0.98 },
-        }),
-      ]);
-
-      const result = checkRatchet(ledgerPath, 'accuracy', 0.5);
-
-      expect(result.improved).toBe(true);
-      expect(result.best).toBe(0.5);
-      expect(result.bestBranch).toBe('');
-    });
-  });
-
-  describe('metric key handling', () => {
-    it('should only look at the specified metric key', () => {
-      writeEntries(ledgerPath, [
-        createEntry({
-          branch: 'test',
-          metrics: { accuracy: 0.7, f1: 0.8, loss: 0.1 },
-        }),
-      ]);
-
-      const result = checkRatchet(ledgerPath, 'f1', 0.85);
-
-      expect(result.improved).toBe(true);
-      expect(result.best).toBe(0.8);
-    });
-
-    it('should skip entries missing the target metric', () => {
-      writeEntries(ledgerPath, [
-        createEntry({ branch: 'has-metric', metrics: { accuracy: 0.9 } }),
-        createEntry({ branch: 'no-metric', metrics: { f1: 0.8 } }),
-      ]);
-
-      const result = checkRatchet(ledgerPath, 'accuracy', 0.95);
-
-      expect(result.improved).toBe(true);
-      expect(result.best).toBe(0.9);
-      expect(result.bestBranch).toBe('has-metric');
-    });
-  });
-
-  describe('error handling', () => {
-    it('should skip malformed JSON lines', () => {
-      writeFileSync(ledgerPath, 'not valid json\n');
-      writeEntries(ledgerPath, [createEntry({ branch: 'valid', metrics: { accuracy: 0.9 } })]);
-
-      const result = checkRatchet(ledgerPath, 'accuracy', 0.85);
-
-      expect(result.improved).toBe(false);
-      expect(result.best).toBe(0.9);
-    });
-
-    it('should skip lines with missing fields', () => {
-      writeFileSync(ledgerPath, '{"branch": "incomplete"}\n');
-      writeEntries(ledgerPath, [createEntry({ branch: 'complete', metrics: { accuracy: 0.85 } })]);
-
-      const result = checkRatchet(ledgerPath, 'accuracy', 0.8);
-
-      expect(result.best).toBe(0.85);
-    });
-
-    it('should handle empty ledger file', () => {
-      writeFileSync(ledgerPath, '');
-      // Write nothing - empty file
-
-      const result = checkRatchet(ledgerPath, 'accuracy', 0.5);
-
-      expect(result.improved).toBe(true);
-      expect(result.best).toBe(0.5);
-    });
-
-    it('should handle file with only whitespace', () => {
-      writeFileSync(ledgerPath, '   \n   \n');
-
-      const result = checkRatchet(ledgerPath, 'accuracy', 0.75);
-
-      expect(result.improved).toBe(true);
-      expect(result.best).toBe(0.75);
     });
   });
 });
 
-describe('getBestMetric', () => {
+describe('getGlobalBest', () => {
   let tempDir: string;
   let ledgerPath: string;
 
@@ -310,7 +116,7 @@ describe('getBestMetric', () => {
     cleanupDir(tempDir);
   });
 
-  it('should return best metric details', () => {
+  it('should return best metric details from successful entries', () => {
     writeEntries(ledgerPath, [
       createEntry({
         branch: 'best-branch',
@@ -324,7 +130,7 @@ describe('getBestMetric', () => {
       }),
     ]);
 
-    const best = getBestMetric(ledgerPath, 'accuracy');
+    const best = getGlobalBest(ledgerPath, 'accuracy');
 
     expect(best).not.toBeNull();
     expect(best?.value).toBe(0.95);
@@ -337,13 +143,13 @@ describe('getBestMetric', () => {
       createEntry({ branch: 'failed', status: 'failure', metrics: { accuracy: 0.95 } }),
     ]);
 
-    const best = getBestMetric(ledgerPath, 'accuracy');
+    const best = getGlobalBest(ledgerPath, 'accuracy');
 
     expect(best).toBeNull();
   });
 
   it('should return null for empty ledger', () => {
-    const best = getBestMetric(ledgerPath, 'accuracy');
+    const best = getGlobalBest(ledgerPath, 'accuracy');
 
     expect(best).toBeNull();
   });
@@ -354,15 +160,31 @@ describe('getBestMetric', () => {
       createEntry({ branch: 'high', metrics: { loss: 0.1 } }),
     ]);
 
-    const best = getBestMetric(ledgerPath, 'loss', { maximize: false });
+    const best = getGlobalBest(ledgerPath, 'loss', { maximize: false });
 
     expect(best).not.toBeNull();
     expect(best?.value).toBe(0.05);
     expect(best?.branch).toBe('low');
   });
+
+  it('should skip no_improvement entries', () => {
+    writeEntries(ledgerPath, [
+      createEntry({ branch: 'success', status: 'success', metrics: { accuracy: 0.85 } }),
+      createEntry({
+        branch: 'no-improve',
+        status: 'no_improvement',
+        metrics: { accuracy: 0.9 },
+      }),
+    ]);
+
+    const best = getGlobalBest(ledgerPath, 'accuracy');
+
+    // Should only consider successful entries
+    expect(best?.value).toBe(0.85);
+  });
 });
 
-describe('createRatchetChecker', () => {
+describe('isNewGlobalBest', () => {
   let tempDir: string;
   let ledgerPath: string;
 
@@ -375,39 +197,42 @@ describe('createRatchetChecker', () => {
     cleanupDir(tempDir);
   });
 
-  it('should create a bound ratchet checker', () => {
-    const ledger = new LedgerManager({ ledgerPath });
+  it('should return true when ledger is empty (first entry)', () => {
+    const result = isNewGlobalBest(ledgerPath, 'accuracy', 0.95);
 
-    writeEntries(ledgerPath, [createEntry({ branch: 'best', metrics: { accuracy: 0.9 } })]);
-
-    const check = createRatchetChecker(ledger, { maximize: true });
-    const result = check('accuracy', 0.95);
-
-    expect(result.improved).toBe(true);
-    expect(result.best).toBe(0.9);
+    expect(result).toBe(true);
   });
 
-  it('should use maximize=false when specified', () => {
-    const ledger = new LedgerManager({ ledgerPath });
+  it('should return true when value beats the global best', () => {
+    writeEntries(ledgerPath, [createEntry({ branch: 'best', metrics: { accuracy: 0.9 } })]);
 
+    const result = isNewGlobalBest(ledgerPath, 'accuracy', 0.95);
+
+    expect(result).toBe(true);
+  });
+
+  it('should return false when value does not beat the global best', () => {
+    writeEntries(ledgerPath, [createEntry({ branch: 'best', metrics: { accuracy: 0.98 } })]);
+
+    const result = isNewGlobalBest(ledgerPath, 'accuracy', 0.95);
+
+    expect(result).toBe(false);
+  });
+
+  it('should return false when value equals global best', () => {
+    writeEntries(ledgerPath, [createEntry({ branch: 'best', metrics: { accuracy: 0.95 } })]);
+
+    const result = isNewGlobalBest(ledgerPath, 'accuracy', 0.95);
+
+    expect(result).toBe(false);
+  });
+
+  it('should handle minimize mode', () => {
     writeEntries(ledgerPath, [createEntry({ branch: 'best', metrics: { loss: 0.05 } })]);
 
-    const check = createRatchetChecker(ledger, { maximize: false });
-    const result = check('loss', 0.02);
-
-    expect(result.improved).toBe(true);
-    expect(result.best).toBe(0.05);
-  });
-
-  it('should default to maximize=true', () => {
-    const ledger = new LedgerManager({ ledgerPath });
-
-    writeEntries(ledgerPath, [createEntry({ branch: 'best', metrics: { accuracy: 0.9 } })]);
-
-    const check = createRatchetChecker(ledger); // No maximize specified
-    const result = check('accuracy', 0.95);
-
-    expect(result.improved).toBe(true);
+    // Lower is better for loss
+    expect(isNewGlobalBest(ledgerPath, 'loss', 0.02, { maximize: false })).toBe(true);
+    expect(isNewGlobalBest(ledgerPath, 'loss', 0.08, { maximize: false })).toBe(false);
   });
 });
 
@@ -416,9 +241,7 @@ describe('determineStatus', () => {
     const ratchetResult: RatchetResult = {
       improved: true,
       current: 0.96,
-      best: 0.9,
-      bestBranch: 'prev',
-      bestCommit: 'abc',
+      baseline: 0.9,
     };
 
     const status = determineStatus(ratchetResult, true);
@@ -430,9 +253,7 @@ describe('determineStatus', () => {
     const ratchetResult: RatchetResult = {
       improved: false,
       current: 0.85,
-      best: 0.9,
-      bestBranch: 'best',
-      bestCommit: 'abc',
+      baseline: 0.9,
     };
 
     const status = determineStatus(ratchetResult, true);
@@ -444,9 +265,7 @@ describe('determineStatus', () => {
     const ratchetResult: RatchetResult = {
       improved: true,
       current: 0.96,
-      best: 0.9,
-      bestBranch: 'prev',
-      bestCommit: 'abc',
+      baseline: 0.9,
     };
 
     const status = determineStatus(ratchetResult, false);
@@ -458,9 +277,7 @@ describe('determineStatus', () => {
     const ratchetResult: RatchetResult = {
       improved: true,
       current: 0.96,
-      best: 0.9,
-      bestBranch: 'prev',
-      bestCommit: 'abc',
+      baseline: 0.9,
     };
 
     const status = determineStatus(ratchetResult, false);
@@ -469,7 +286,7 @@ describe('determineStatus', () => {
   });
 });
 
-describe('checkRatchet integration', () => {
+describe('integration: baseline vs global best separation', () => {
   let tempDir: string;
   let ledgerPath: string;
 
@@ -482,92 +299,132 @@ describe('checkRatchet integration', () => {
     cleanupDir(tempDir);
   });
 
-  it('should support the full ratchet workflow', async () => {
-    // Simulate a series of experiments over time
-
-    // First experiment - establishes baseline
-    let result = checkRatchet(ledgerPath, 'accuracy', 0.82);
-    expect(result.improved).toBe(true);
-    expect(result.best).toBe(0.82);
-
-    // Append to ledger
+  /**
+   * This test verifies the key fix: ablation studies now work correctly.
+   *
+   * Scenario:
+   * - Run A: lr=0.001, baseline=0.92, final=0.934 (beats baseline → success, also global best)
+   * - Run B: lr=0.005, baseline=0.92, final=0.927 (beats baseline → success, NOT global best)
+   * - Run C: lr=0.01,  baseline=0.93, final=0.938 (beats baseline → success, NOT global best)
+   *
+   * Previously, Run B and C would be marked "no_improvement" because they didn't beat the
+   * global best from Run A. Now they correctly get "success" because they beat their baselines.
+   */
+  it('should mark runs as success when they beat their own baseline, even if not global best', async () => {
     const ledger = new LedgerManager({ ledgerPath });
+
+    // Run A: establishes 0.934 as global best
     await ledger.append(
       createEntry({
-        branch: 'baseline',
-        hypothesisCommit: 'commita',
+        branch: 'lr-0.001',
+        hypothesisCommit: 'a1',
         status: 'success',
-        metrics: { accuracy: 0.82 },
+        metrics: { accuracy: 0.934 },
+        globalBest: true,
       })
     );
 
-    // Second experiment - improves
-    result = checkRatchet(ledgerPath, 'accuracy', 0.88);
-    expect(result.improved).toBe(true);
-    expect(result.best).toBe(0.82);
+    // Run B: baseline 0.92, achieved 0.927 - beats baseline, not global best
+    const runBRatchet = checkRatchet(0.92, 0.927);
+    expect(runBRatchet.improved).toBe(true); // Beats baseline!
+    const runBIsGlobal = isNewGlobalBest(ledgerPath, 'accuracy', 0.927);
+    expect(runBIsGlobal).toBe(false); // But not global best
+
     await ledger.append(
       createEntry({
-        branch: 'improved-1',
-        hypothesisCommit: 'commitb',
-        status: 'success',
-        metrics: { accuracy: 0.88 },
+        branch: 'lr-0.005',
+        hypothesisCommit: 'b1',
+        status: determineStatus(runBRatchet, true),
+        metrics: { accuracy: 0.927 },
+        globalBest: runBIsGlobal,
       })
     );
 
-    // Third experiment - validates but doesn't improve
-    result = checkRatchet(ledgerPath, 'accuracy', 0.87);
-    expect(result.improved).toBe(false);
-    expect(result.best).toBe(0.88);
-    const status = determineStatus(result, true);
-    expect(status).toBe('no_improvement');
+    // Run C: baseline 0.93, achieved 0.938 - beats baseline, is global best
+    const runCRatchet = checkRatchet(0.93, 0.938);
+    expect(runCRatchet.improved).toBe(true); // Beats baseline!
+    const runCIsGlobal = isNewGlobalBest(ledgerPath, 'accuracy', 0.938);
+    expect(runCIsGlobal).toBe(true); // Also new global best
 
-    // Fourth experiment - failure
-    result = checkRatchet(ledgerPath, 'accuracy', 0.5);
-    // Still compares against best
-    expect(result.improved).toBe(false);
-    expect(result.best).toBe(0.88);
-
-    // Fifth experiment - beats the best
-    result = checkRatchet(ledgerPath, 'accuracy', 0.92);
-    expect(result.improved).toBe(true);
     await ledger.append(
       createEntry({
-        branch: 'breakthrough',
-        hypothesisCommit: 'commitc',
-        status: 'success',
-        metrics: { accuracy: 0.92 },
+        branch: 'lr-0.01',
+        hypothesisCommit: 'c1',
+        status: determineStatus(runCRatchet, true),
+        metrics: { accuracy: 0.938 },
+        globalBest: runCIsGlobal,
       })
     );
 
-    // Final check
-    const finalBest = getBestMetric(ledgerPath, 'accuracy');
-    expect(finalBest).not.toBeNull();
-    expect(finalBest?.value).toBe(0.92);
-    expect(finalBest?.branch).toBe('breakthrough');
+    // Verify ledger
+    const successes = ledger.readByStatus('success');
+    expect(successes).toHaveLength(3); // All three runs are successes
+
+    const globalBests = successes.filter((e) => e.globalBest);
+    expect(globalBests).toHaveLength(2); // Only runs A and C are global bests
+    expect(globalBests[0]?.branch).toBe('lr-0.001');
+    expect(globalBests[1]?.branch).toBe('lr-0.01');
   });
 
-  it('should work with multiple metrics independently', () => {
-    writeEntries(ledgerPath, [
-      createEntry({ branch: 'exp-1', metrics: { accuracy: 0.9, latency: 100 } }),
-      createEntry({ branch: 'exp-2', metrics: { accuracy: 0.85, latency: 80 } }),
-    ]);
+  it('should support the full experiment workflow', async () => {
+    // Simulate a series of ablation experiments
 
-    // Check accuracy - 0.9 is best
-    const accResult = checkRatchet(ledgerPath, 'accuracy', 0.88);
-    expect(accResult.improved).toBe(false);
-    expect(accResult.best).toBe(0.9);
+    const ledger = new LedgerManager({ ledgerPath });
 
-    // Check latency - 80 is best (minimize)
-    const latResult = checkRatchet(ledgerPath, 'latency', 85, { maximize: false });
-    expect(latResult.improved).toBe(false);
-    expect(latResult.best).toBe(80);
+    // Experiment 1: baseline=0.82, achieved=0.88
+    const exp1Ratchet = checkRatchet(0.82, 0.88);
+    expect(exp1Ratchet.improved).toBe(true);
 
-    // New accuracy beats best
-    const accWin = checkRatchet(ledgerPath, 'accuracy', 0.95);
-    expect(accWin.improved).toBe(true);
+    await ledger.append(
+      createEntry({
+        branch: 'exp-1',
+        hypothesisCommit: 'e1',
+        status: determineStatus(exp1Ratchet, true),
+        metrics: { accuracy: 0.88 },
+        globalBest: isNewGlobalBest(ledgerPath, 'accuracy', 0.88),
+      })
+    );
 
-    // New latency beats best
-    const latWin = checkRatchet(ledgerPath, 'latency', 70, { maximize: false });
-    expect(latWin.improved).toBe(true);
+    // Experiment 2: baseline=0.85, achieved=0.87 (beats baseline but not global)
+    const exp2Ratchet = checkRatchet(0.85, 0.87);
+    expect(exp2Ratchet.improved).toBe(true); // Still beats baseline
+
+    await ledger.append(
+      createEntry({
+        branch: 'exp-2',
+        hypothesisCommit: 'e2',
+        status: determineStatus(exp2Ratchet, true),
+        metrics: { accuracy: 0.87 },
+        globalBest: isNewGlobalBest(ledgerPath, 'accuracy', 0.87),
+      })
+    );
+
+    // Experiment 3: baseline=0.82, achieved=0.86 (beats baseline but not global)
+    const exp3Ratchet = checkRatchet(0.82, 0.86);
+    expect(exp3Ratchet.improved).toBe(true);
+
+    await ledger.append(
+      createEntry({
+        branch: 'exp-3',
+        hypothesisCommit: 'e3',
+        status: determineStatus(exp3Ratchet, true),
+        metrics: { accuracy: 0.86 },
+        globalBest: isNewGlobalBest(ledgerPath, 'accuracy', 0.86),
+      })
+    );
+
+    // All three should be successes
+    const successes = ledger.readByStatus('success');
+    expect(successes).toHaveLength(3);
+
+    // Only exp-1 is global best
+    const globalBests = successes.filter((e) => e.globalBest);
+    expect(globalBests).toHaveLength(1);
+    expect(globalBests[0]?.branch).toBe('exp-1');
+
+    // Final check: global best is still exp-1's 0.88
+    const best = getGlobalBest(ledgerPath, 'accuracy');
+    expect(best?.value).toBe(0.88);
+    expect(best?.branch).toBe('exp-1');
   });
 });

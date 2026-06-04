@@ -23,7 +23,7 @@ import { getModel } from '@earendil-works/pi-ai';
 
 import { WorkspaceManager } from './workspaceManager.js';
 import { runWithValidation, type ValidationResult } from './validateContract.js';
-import { checkRatchet, type RatchetResult } from './ratchet.js';
+import { checkRatchet, isNewGlobalBest, type RatchetResult } from './ratchet.js';
 import { LedgerManager, type LedgerEntry } from './ledger.js';
 import { createSandboxExtension } from './sandboxExtension.js';
 import { createExperimentTracer, summariseTrace, readTrace } from './traceLogger.js';
@@ -218,6 +218,12 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
       );
     }
     const baselineValue = baselineResult.metrics[metricKey];
+    if (baselineValue === undefined) {
+      throw new Error(
+        `Baseline validation succeeded but metric ${metricKey} not found in results. ` +
+          `The validate command must produce a valid ${metricKey} metric.`
+      );
+    }
     log(`Baseline established: ${metricKey} = ${baselineValue}`);
 
     // =====================================================================
@@ -303,16 +309,18 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
           );
           continue;
         }
-        const ratchet = checkRatchet(ledgerPath, metricKey, value);
+        const ratchet = checkRatchet(baselineValue, value);
         if (ratchet.improved) {
-          log(`Target reached: ${metricKey}=${value}. Stopping early.`);
+          log(
+            `Target reached: ${metricKey}=${value} (baseline: ${baselineValue}). Stopping early.`
+          );
           break;
         }
         log(
-          `No improvement yet: ${metricKey}=${value} (baseline: ${baselineValue ?? 'N/A'}, best so far: ${ratchet.best}). Continuing...`
+          `No improvement yet: ${metricKey}=${value} (baseline: ${baselineValue}). Continuing...`
         );
         await session.prompt(
-          `Validation result: ${metricKey}=${value} (baseline: ${baselineValue ?? 'N/A'}, best so far: ${ratchet.best}). Keep improving.`
+          `Validation result: ${metricKey}=${value} (baseline: ${baselineValue}). Keep improving.`
         );
       } else {
         await session.prompt(`Validation failed: ${interim.error}. Fix the issue and try again.`);
@@ -378,12 +386,13 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
       throw new Error(`Metric ${metricKey} not found in validation results`);
     }
 
-    const ratchetResult: RatchetResult = checkRatchet(ledgerPath, metricKey, currentValue);
+    const ratchetResult: RatchetResult = checkRatchet(baselineValue, currentValue);
+    const isGlobalBest = isNewGlobalBest(ledgerPath, metricKey, currentValue);
 
     log(
       ratchetResult.improved
-        ? `Improved! Current: ${currentValue}, Baseline: ${baselineValue ?? 'N/A'}, Global Best: ${ratchetResult.best}`
-        : `No improvement. Current: ${currentValue}, Baseline: ${baselineValue ?? 'N/A'}, Global Best: ${ratchetResult.best}`
+        ? `Improved! Current: ${currentValue}, Baseline: ${baselineValue}`
+        : `No improvement over baseline. Current: ${currentValue}, Baseline: ${baselineValue}`
     );
 
     // =====================================================================
@@ -409,6 +418,12 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
       ? 'success'
       : 'no_improvement';
 
+    // Only set globalBest flag if this run achieved success AND beat all prior successes
+    const isGlobalBestFlag = finalStatus === 'success' && isGlobalBest;
+    if (isGlobalBestFlag) {
+      log(`New global best for ${metricKey}!`);
+    }
+
     const ledgerEntry = createLedgerEntry({
       branch: branchName,
       baseCommit: syncResult.commitHash,
@@ -416,6 +431,7 @@ export async function runExperiment(options: RunExperimentOptions): Promise<RunE
       status: finalStatus,
       metrics: validationResult.metrics,
       durationMs: Date.now() - startTime,
+      globalBest: isGlobalBestFlag,
     });
 
     await ledger.append(ledgerEntry);
