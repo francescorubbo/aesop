@@ -26,7 +26,9 @@ import {
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { runExperiment, type RunExperimentResult } from './runExperiment.js';
+import { runCampaign } from './campaign/runCampaign.js';
 import { LedgerManager, type LedgerEntry } from './ledger.js';
+import { CampaignLedger } from './campaign/campaignLedger.js';
 import { readTrace, summariseTrace, type TraceEvent, TRACE_ROOT } from './traceLogger.js';
 
 /**
@@ -46,6 +48,11 @@ interface AesopConfig {
   model?: string;
   agent?: {
     model?: string;
+  };
+  campaign?: {
+    maxTrials?: number;
+    maxIterations?: number;
+    maximize?: boolean;
   };
 }
 
@@ -281,6 +288,131 @@ program
   );
 
 // ============================================================================
+// CAMPAIGN COMMAND
+// ============================================================================
+
+program
+  .command('campaign <question>')
+  .description('Run a campaign of experiments to answer a question')
+  .addOption(
+    new Option('-c, --validate-cmd <command>', 'Validation command to run').default(
+      DEFAULT_VALIDATE_CMD
+    )
+  )
+  .addOption(new Option('-m, --metric <key>', 'Primary metric to optimize').default(DEFAULT_METRIC))
+  .addOption(new Option('--maximize', 'Maximize the metric').default(true))
+  .addOption(new Option('--minimize', 'Minimize the metric'))
+  .addOption(
+    new Option('-t, --max-trials <n>', 'Maximum number of trials').default('8')
+  )
+  .addOption(
+    new Option('-i, --max-iterations <n>', 'Maximum agent iterations per trial').default('15')
+  )
+  .addOption(new Option('--model <model>', 'Model override for the agent'))
+  .action(
+    async (
+      question: string,
+      options: {
+        validateCmd?: string;
+        metric?: string;
+        maximize?: boolean;
+        minimize?: boolean;
+        maxTrials?: string;
+        maxIterations?: string;
+        model?: string;
+      }
+    ) => {
+      const projectDir = process.cwd();
+      const config = loadConfig(projectDir);
+
+      const model =
+        options.model ?? config.model ?? (config as { agent?: { model?: string } }).agent?.model;
+
+      const validateCmd = options.validateCmd ?? config.validateCmd ?? DEFAULT_VALIDATE_CMD;
+      const metricKey = options.metric ?? config.metric ?? DEFAULT_METRIC;
+      const maximize = options.minimize ? false : (options.maximize ?? config.campaign?.maximize ?? true);
+      const maxTrials =
+        parseInt(options.maxTrials ?? '', 10) || config.campaign?.maxTrials || 8;
+      const maxIterations =
+        parseInt(options.maxIterations ?? '', 10) || config.campaign?.maxIterations || 15;
+
+      let currentTrial = 0;
+
+      const onLog = (msg: string) => {
+        if (msg.startsWith('[runCampaign] Starting campaign: ')) {
+          const q = msg.replace('[runCampaign] Starting campaign: ', '');
+          console.log(`[Campaign] Question: "${q}"`);
+        } else if (msg.startsWith('[runCampaign] Baseline established: ')) {
+          const b = msg.replace('[runCampaign] Baseline established: ', '');
+          console.log(`[Campaign] ${b.replace(' = ', ': ')}`);
+        } else if (msg.startsWith('[runCampaign] Running trial: ')) {
+          currentTrial++;
+          const h = msg.replace('[runCampaign] Running trial: ', '');
+          console.log(`[Trial ${currentTrial}/${maxTrials}] "${h}" ...`);
+        } else if (msg.startsWith('[runTrial] Trial completed. Metrics: ')) {
+          const metricsJson = msg.replace('[runTrial] Trial completed. Metrics: ', '');
+          try {
+            const metrics = JSON.parse(metricsJson);
+            const value = metrics[metricKey];
+            console.log(`[Trial ${currentTrial}/${maxTrials}] completed — ${metricKey}=${value}`);
+          } catch {
+            console.log(`[Trial ${currentTrial}/${maxTrials}] completed`);
+          }
+        } else if (msg.includes('[runCampaign] Agent iteration')) {
+          // Skip verbose iteration logs
+        } else if (msg.includes('[runTrial]')) {
+          // Skip verbose trial logs
+        } else {
+          console.log(msg);
+        }
+      };
+
+      try {
+        const result = await runCampaign({
+          projectDir,
+          question,
+          validateCmd,
+          metricKey,
+          maximize,
+          maxTrials,
+          maxIterations,
+          ...(model ? { model } : {}),
+          onLog,
+        });
+
+        const entry = result.campaignEntry;
+        const summary = entry.summary;
+        const bestMetrics = entry.bestMetrics;
+        const bestValue = bestMetrics ? bestMetrics[metricKey] : undefined;
+
+        console.log('\\n── Campaign Summary ─────────────────────────────────────────────────────');
+        console.log(`Question:      ${entry.question}`);
+        if (bestValue !== undefined) {
+          console.log(`Best config:   ${summary?.bestConfiguration ?? 'N/A'} (${metricKey} ${bestValue.toFixed(4)})`);
+        } else {
+          console.log(`Best config:   None found`);
+        }
+        if (summary) {
+          console.log(`Insight:       ${summary.insight}`);
+          console.log(`Recommendation: ${summary.recommendation}`);
+        }
+        console.log('─────────────────────────────────────────────────────────────────────────');
+
+        if (result.ratchetImproved) {
+          console.log(`[Ratchet] New global best: ${metricKey}=${bestValue?.toFixed(4)} (previous best: ${result.historicalBest?.toFixed(4)})`);
+        } else {
+          console.log(`[Ratchet] No improvement over historical best: ${result.historicalBest?.toFixed(4)}`);
+        }
+
+        process.exit(0);
+      } catch (error) {
+        console.error('[Aesop] Error:', error instanceof Error ? error.message : String(error));
+        process.exit(1);
+      }
+    }
+  );
+
+// ============================================================================
 // INTERACTIVE COMMAND
 // ============================================================================
 
@@ -338,14 +470,57 @@ program
     new Option('-l, --ledger-path <path>', 'Path to experiments.jsonl').default('experiments.jsonl')
   )
   .addOption(new Option('--json', 'Output as JSON').default(false))
-  .action(async (options: { ledgerPath?: string; json?: boolean }) => {
+  .addOption(new Option('--campaigns', 'Show campaign history instead of experiment history').default(false))
+  .addOption(new Option('--campaign-ledger-path <path>', 'Path to campaigns.jsonl'))
+  .action(async (options: { ledgerPath?: string; json?: boolean; campaigns?: boolean; campaignLedgerPath?: string }) => {
     const projectDir = process.cwd();
+    console.error(`[Debug] process.cwd(): ${projectDir}`);
+
+    if (options.campaigns) {
+      const campaignLedgerPath = options.campaignLedgerPath ?? join(projectDir, 'campaigns.jsonl');
+      if (!existsSync(campaignLedgerPath)) {
+        console.log('No campaigns found. Run `aesop campaign \"<question>\"` to start.');
+        return;
+      }
+
+      const ledger = new CampaignLedger({ ledgerPath: campaignLedgerPath });
+      const entries = ledger.readAll();
+
+      if (options.json) {
+        console.log(JSON.stringify(entries, null, 2));
+      } else {
+        if (entries.length === 0) {
+          console.log('No campaigns found.');
+          return;
+        }
+
+        console.log('');
+        console.log('ID'.padEnd(10) + 'Question'.padEnd(42) + 'Status'.padEnd(16) + 'Best Metric'.padEnd(12) + 'Trials'.padEnd(8) + 'Duration');
+        console.log('-'.repeat(100));
+
+        for (const entry of entries) {
+          const id = entry.campaignId.slice(0, 8).padEnd(10);
+          const question = (entry.question.length > 40 ? entry.question.slice(0, 37) + '...' : entry.question).padEnd(42);
+          const status = entry.status.padEnd(16);
+          const metricValue = entry.bestMetrics && Object.keys(entry.bestMetrics).length > 0
+            ? (Object.values(entry.bestMetrics)[0]?.toFixed(4) ?? '—').padEnd(12)
+            : '—'.padEnd(12);
+          const trials = entry.trialCount.toString().padEnd(8);
+          const duration = formatDuration(entry.durationMs);
+
+          console.log(`${id}${question}${status}${metricValue}${trials}${duration}`);
+        }
+        console.log('');
+      }
+      return;
+    }
+
     const ledgerPath = options.ledgerPath
       ? resolve(projectDir, options.ledgerPath)
       : join(projectDir, 'experiments.jsonl');
 
     if (!existsSync(ledgerPath)) {
-      console.log('No experiments found. Run `aesop run "<hypothesis>"` to start.');
+      console.log('No experiments found. Run `aesop run \"<hypothesis>\"` to start.');
       return;
     }
 
@@ -372,17 +547,17 @@ const trace = program.command('trace').description('Inspect experiment traces');
  */
 function toDirName(branchName: string): string {
   // Replace slashes with the encoding used by createExperimentTracer
-  return branchName.replace(/\//g, '__').replace(/[^a-zA-Z0-9_.-]/g, '-');
+  return branchName.replace(/\\//g, '__').replace(/[^a-zA-Z0-9_.-]/g, '-');
 }
 
 /**
  * Find a trace directory by branch name (supports prefix and suffix matching).
  *
  * Examples:
- *   - "hypothesis/test-lr" matches "hypothesis__test-lr" (exact, normalized)
- *   - "test-lr" matches "hypothesis__test-lr" (suffix after /)
- *   - "hypothesis" matches "hypothesis__test" (prefix with /)
- *   - "test" matches "test-branch" (direct prefix)
+ *   - \"hypothesis/test-lr\" matches \"hypothesis__test-lr\" (exact, normalized)
+ *   - \"test-lr\" matches \"hypothesis__test-lr\" (suffix after /)
+ *   - \"hypothesis\" matches \"hypothesis__test\" (prefix with /)
+ *   - \"test\" matches \"test-branch\" (direct prefix)
  */
 function findTraceDir(projectDir: string, branchName: string): string | null {
   const traceRoot = resolve(projectDir, TRACE_ROOT);
@@ -401,9 +576,9 @@ function findTraceDir(projectDir: string, branchName: string): string | null {
   // Flexible matching: prefix, suffix, or contains (all on normalized names)
   const matches = dirs.filter((d) => {
     if (d === normalizedInput) return true;
-    if (d.startsWith(normalizedInput + '/')) return true; // "hypothesis" matches "hypothesis/test"
-    if (d.endsWith('/' + normalizedInput)) return true; // "test-lr" matches "hypothesis/test-lr"
-    if (d.startsWith(normalizedInput)) return true; // "test" matches "test-branch"
+    if (d.startsWith(normalizedInput + '/')) return true; // \"hypothesis\" matches \"hypothesis/test\"
+    if (d.endsWith('/' + normalizedInput)) return true; // \"test-lr\" matches \"hypothesis/test-lr\"
+    if (d.startsWith(normalizedInput)) return true; // \"test\" matches \"test-branch\"
     return false;
   });
 
@@ -412,7 +587,7 @@ function findTraceDir(projectDir: string, branchName: string): string | null {
   }
 
   if (matches.length > 1) {
-    console.error(`Ambiguous branch "${branchName}". Matches: ${matches.join(', ')}`);
+    console.error(`Ambiguous branch \"${branchName}\". Matches: ${matches.join(', ')}`);
     process.exit(1);
   }
 
@@ -455,7 +630,7 @@ trace
     const traceRoot = resolve(projectDir, TRACE_ROOT);
 
     if (!existsSync(traceRoot)) {
-      console.log('No traces found. Run `aesop run "<hypothesis>"` first.');
+      console.log('No traces found. Run `aesop run \"<hypothesis>\"` first.');
       return;
     }
 
@@ -485,7 +660,7 @@ trace
     }
 
     // Determine column widths based on content
-    const maxBranchLen = Math.max(...entries.map((e) => e.branch.length), 6); // min "Branch"
+    const maxBranchLen = Math.max(...entries.map((e) => e.branch.length), 6); // min \"Branch\"
     const COL_BRANCH = maxBranchLen;
     const COL_ITER = 12;
     const COL_TOOLS = 12;
@@ -528,9 +703,9 @@ function printEvent(event: TraceEvent, verbose: boolean): void {
     case 'tool_call': {
       const input = JSON.stringify(event.input, null, 2);
       if (verbose) {
-        console.log(`\n${'─'.repeat(60)}`);
+        console.log(`\\n${'─'.repeat(60)}`);
         console.log(`[${ts}] TOOL CALL: ${event.tool}`);
-        console.log(input.slice(0, 500) + (input.length > 500 ? '\n...' : ''));
+        console.log(input.slice(0, 500) + (input.length > 500 ? '\\n...' : ''));
       } else {
         console.log(`[${ts}] ${event.tool}`);
       }
@@ -540,22 +715,22 @@ function printEvent(event: TraceEvent, verbose: boolean): void {
       if (verbose) {
         const output = event.truncated ? event.output + ' [TRUNCATED]' : event.output;
         console.log(
-          `  → ${output.slice(0, 300).replace(/\n/g, '\n  ')}${output.length > 300 ? '\n  ...' : ''}`
+          `  → ${output.slice(0, 300).replace(/\\n/g, '\\n  ')}${output.length > 300 ? '\\n  ...' : ''}`
         );
       }
       break;
     }
     case 'message': {
       if (verbose) {
-        console.log(`\n${'─'.repeat(60)}`);
+        console.log(`\\n${'─'.repeat(60)}`);
         console.log(`[${ts}] ASSISTANT MESSAGE:`);
-        console.log(event.text.slice(0, 800) + (event.text.length > 800 ? '\n...' : ''));
+        console.log(event.text.slice(0, 800) + (event.text.length > 800 ? '\\n...' : ''));
       }
       break;
     }
     case 'iteration': {
       const metrics = event.metrics ? JSON.stringify(event.metrics) : 'no metrics';
-      console.log(`\n${'='.repeat(60)}`);
+      console.log(`\\n${'='.repeat(60)}`);
       console.log(`ITERATION ${event.n} — ${metrics}`);
       break;
     }
@@ -609,7 +784,7 @@ trace
     }
     if (current) iterations.push(current);
 
-    console.log('\n' + '='.repeat(80));
+    console.log('\\n' + '='.repeat(80));
     console.log('TRACE');
     console.log('='.repeat(80));
 
@@ -624,7 +799,7 @@ trace
             .join(', ')
         : '';
 
-      console.log(`\n${'█'.repeat(80)}`);
+      console.log(`\\n${'█'.repeat(80)}`);
       console.log(`ITERATION ${iter.n}${metrics ? ` | ${metrics}` : ''}`);
       console.log('█'.repeat(80));
 
@@ -637,7 +812,7 @@ trace
     const diffsDir = traceDir;
     const diffFiles = readdirSync(diffsDir).filter((f) => f.endsWith('.diff'));
     if (diffFiles.length > 0) {
-      console.log('\n' + '='.repeat(80));
+      console.log('\\n' + '='.repeat(80));
       console.log('DIFF FILES');
       console.log('='.repeat(80));
       for (const df of diffFiles.sort()) {
