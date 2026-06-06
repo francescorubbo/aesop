@@ -9,6 +9,11 @@ coverage/
 
 # Experiment ledgers
 **/experiments.jsonl
+**/campaigns.jsonl
+**/trials.jsonl
+**/eval_result.json
+
+
 
 # Example data
 examples/mnist/data/
