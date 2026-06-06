@@ -572,7 +572,7 @@ const trace = program.command('trace').description('Inspect experiment traces');
  */
 function toDirName(branchName: string): string {
   // Replace slashes with the encoding used by createExperimentTracer
-  return branchName.replace(/\\/ / g, '__').replace(/[^a-zA-Z0-9_.-]/g, '-');
+  return branchName.replace(/\//g, '__').replace(/[^a-zA-Z0-9_.-]/g, '-');
 }
 
 /**
