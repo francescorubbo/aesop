@@ -8,7 +8,7 @@
 import { appendFileSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import lockfile from 'proper-lockfile';
-import { CampaignEntry, CampaignEntrySchema } from './types';
+import { CampaignEntry, CampaignEntrySchema } from './types.js';
 
 export interface CampaignLedgerOptions {
   /** Path to the ledger file */

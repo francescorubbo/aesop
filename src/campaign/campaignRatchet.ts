@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { CampaignEntry } from './types';
+import { CampaignEntry } from './types.js';
 
 export interface CampaignRatchetResult {
   improved: boolean;

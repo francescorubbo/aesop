@@ -41,16 +41,25 @@ npm run build
 
 # Run an experiment
 cd examples/mnist
-GEMINI_API_KEY=your-key node ../../dist/cli.js run "Add one more hidden layer with 256 neurons to improve accuracy"
+GEMINI_API_KEY=your-key node ../../dist/cli.js run "Improve the model to achieve >95% accuracy"
 ```
 
-Or from the `examples/mnist` directory, with the CLI already built:
+### Campaign Mode
+
+Aesop also supports **campaigns** for systematic searches across multiple trials, which is ideal for hyperparameter optimization:
 
 ```bash
-cd examples/mnist
-GEMINI_API_KEY=your-key node ../../dist/cli.js run "Improve the model to achieve >95% accuracy"
+# Campaign mode: systematic learning-rate search
+GEMINI_API_KEY=your-key node ../../dist/cli.js campaign "What learning rate maximises MNIST test accuracy?" \
+  --validate-cmd ./aesop_validate.sh \
+  --metric accuracy \
+  --max-trials 6 \
+  --max-iterations 10
+```
 
 # Check results
+
+```bash
 aesop status
 ```
 

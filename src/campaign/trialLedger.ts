@@ -8,7 +8,7 @@
 import { appendFileSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import lockfile from 'proper-lockfile';
-import { TrialEntry, TrialEntrySchema } from './types';
+import { TrialEntry, TrialEntrySchema } from './types.js';
 
 export interface TrialLedgerOptions {
   /** Path to the ledger file */
