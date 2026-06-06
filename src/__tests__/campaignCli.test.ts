@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { execa } from 'execa';
-import { writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
+import { execa, ExecaError } from 'execa';
+import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -35,9 +35,10 @@ describe('Aesop Campaign CLI Integration', () => {
     try {
       await runAesop(['campaign']);
       expect.fail('Should have thrown an error');
-    } catch (error: any) {
-      expect(error.exitCode).toBe(1);
-      expect(error.stderr).toContain("error: missing required argument 'question'");
+    } catch (error) {
+      const execError = error as ExecaError;
+      expect(execError.exitCode).toBe(1);
+      expect(execError.stderr).toContain("error: missing required argument 'question'");
     }
   });
 });
