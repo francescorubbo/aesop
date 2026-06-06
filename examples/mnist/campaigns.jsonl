@@ -1,1 +1,0 @@
-{"campaignId":"ff5c6388-1ac0-4461-9188-c2c96686dddb","timestamp":"2026-06-06T11:15:35.287Z","question":"What learning rate maximises MNIST test accuracy?","metricKey":"accuracy","maximize":true,"status":"budget_exhausted","trialCount":0,"bestTrialId":null,"bestMetrics":null,"summary":null,"durationMs":5317}
