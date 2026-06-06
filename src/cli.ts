@@ -302,9 +302,7 @@ program
   .addOption(new Option('-m, --metric <key>', 'Primary metric to optimize').default(DEFAULT_METRIC))
   .addOption(new Option('--maximize', 'Maximize the metric').default(true))
   .addOption(new Option('--minimize', 'Minimize the metric'))
-  .addOption(
-    new Option('-t, --max-trials <n>', 'Maximum number of trials').default('8')
-  )
+  .addOption(new Option('-t, --max-trials <n>', 'Maximum number of trials').default('8'))
   .addOption(
     new Option('-i, --max-iterations <n>', 'Maximum agent iterations per trial').default('15')
   )
@@ -330,9 +328,10 @@ program
 
       const validateCmd = options.validateCmd ?? config.validateCmd ?? DEFAULT_VALIDATE_CMD;
       const metricKey = options.metric ?? config.metric ?? DEFAULT_METRIC;
-      const maximize = options.minimize ? false : (options.maximize ?? config.campaign?.maximize ?? true);
-      const maxTrials =
-        parseInt(options.maxTrials ?? '', 10) || config.campaign?.maxTrials || 8;
+      const maximize = options.minimize
+        ? false
+        : (options.maximize ?? config.campaign?.maximize ?? true);
+      const maxTrials = parseInt(options.maxTrials ?? '', 10) || config.campaign?.maxTrials || 8;
       const maxIterations =
         parseInt(options.maxIterations ?? '', 10) || config.campaign?.maxIterations || 15;
 
@@ -388,7 +387,9 @@ program
         console.log('\\n── Campaign Summary ─────────────────────────────────────────────────────');
         console.log(`Question:      ${entry.question}`);
         if (bestValue !== undefined) {
-          console.log(`Best config:   ${summary?.bestConfiguration ?? 'N/A'} (${metricKey} ${bestValue.toFixed(4)})`);
+          console.log(
+            `Best config:   ${summary?.bestConfiguration ?? 'N/A'} (${metricKey} ${bestValue.toFixed(4)})`
+          );
         } else {
           console.log(`Best config:   None found`);
         }
@@ -399,9 +400,13 @@ program
         console.log('─────────────────────────────────────────────────────────────────────────');
 
         if (result.ratchetImproved) {
-          console.log(`[Ratchet] New global best: ${metricKey}=${bestValue?.toFixed(4)} (previous best: ${result.historicalBest?.toFixed(4)})`);
+          console.log(
+            `[Ratchet] New global best: ${metricKey}=${bestValue?.toFixed(4)} (previous best: ${result.historicalBest?.toFixed(4)})`
+          );
         } else {
-          console.log(`[Ratchet] No improvement over historical best: ${result.historicalBest?.toFixed(4)}`);
+          console.log(
+            `[Ratchet] No improvement over historical best: ${result.historicalBest?.toFixed(4)}`
+          );
         }
 
         process.exit(0);
@@ -470,69 +475,89 @@ program
     new Option('-l, --ledger-path <path>', 'Path to experiments.jsonl').default('experiments.jsonl')
   )
   .addOption(new Option('--json', 'Output as JSON').default(false))
-  .addOption(new Option('--campaigns', 'Show campaign history instead of experiment history').default(false))
+  .addOption(
+    new Option('--campaigns', 'Show campaign history instead of experiment history').default(false)
+  )
   .addOption(new Option('--campaign-ledger-path <path>', 'Path to campaigns.jsonl'))
-  .action(async (options: { ledgerPath?: string; json?: boolean; campaigns?: boolean; campaignLedgerPath?: string }) => {
-    const projectDir = process.cwd();
-    console.error(`[Debug] process.cwd(): ${projectDir}`);
+  .action(
+    async (options: {
+      ledgerPath?: string;
+      json?: boolean;
+      campaigns?: boolean;
+      campaignLedgerPath?: string;
+    }) => {
+      const projectDir = process.cwd();
+      console.error(`[Debug] process.cwd(): ${projectDir}`);
 
-    if (options.campaigns) {
-      const campaignLedgerPath = options.campaignLedgerPath ?? join(projectDir, 'campaigns.jsonl');
-      if (!existsSync(campaignLedgerPath)) {
-        console.log('No campaigns found. Run `aesop campaign \"<question>\"` to start.');
-        return;
-      }
-
-      const ledger = new CampaignLedger({ ledgerPath: campaignLedgerPath });
-      const entries = ledger.readAll();
-
-      if (options.json) {
-        console.log(JSON.stringify(entries, null, 2));
-      } else {
-        if (entries.length === 0) {
-          console.log('No campaigns found.');
+      if (options.campaigns) {
+        const campaignLedgerPath =
+          options.campaignLedgerPath ?? join(projectDir, 'campaigns.jsonl');
+        if (!existsSync(campaignLedgerPath)) {
+          console.log('No campaigns found. Run `aesop campaign \"<question>\"` to start.');
           return;
         }
 
-        console.log('');
-        console.log('ID'.padEnd(10) + 'Question'.padEnd(42) + 'Status'.padEnd(16) + 'Best Metric'.padEnd(12) + 'Trials'.padEnd(8) + 'Duration');
-        console.log('-'.repeat(100));
+        const ledger = new CampaignLedger({ ledgerPath: campaignLedgerPath });
+        const entries = ledger.readAll();
 
-        for (const entry of entries) {
-          const id = entry.campaignId.slice(0, 8).padEnd(10);
-          const question = (entry.question.length > 40 ? entry.question.slice(0, 37) + '...' : entry.question).padEnd(42);
-          const status = entry.status.padEnd(16);
-          const metricValue = entry.bestMetrics && Object.keys(entry.bestMetrics).length > 0
-            ? (Object.values(entry.bestMetrics)[0]?.toFixed(4) ?? '—').padEnd(12)
-            : '—'.padEnd(12);
-          const trials = entry.trialCount.toString().padEnd(8);
-          const duration = formatDuration(entry.durationMs);
+        if (options.json) {
+          console.log(JSON.stringify(entries, null, 2));
+        } else {
+          if (entries.length === 0) {
+            console.log('No campaigns found.');
+            return;
+          }
 
-          console.log(`${id}${question}${status}${metricValue}${trials}${duration}`);
+          console.log('');
+          console.log(
+            'ID'.padEnd(10) +
+              'Question'.padEnd(42) +
+              'Status'.padEnd(16) +
+              'Best Metric'.padEnd(12) +
+              'Trials'.padEnd(8) +
+              'Duration'
+          );
+          console.log('-'.repeat(100));
+
+          for (const entry of entries) {
+            const id = entry.campaignId.slice(0, 8).padEnd(10);
+            const question = (
+              entry.question.length > 40 ? entry.question.slice(0, 37) + '...' : entry.question
+            ).padEnd(42);
+            const status = entry.status.padEnd(16);
+            const metricValue =
+              entry.bestMetrics && Object.keys(entry.bestMetrics).length > 0
+                ? (Object.values(entry.bestMetrics)[0]?.toFixed(4) ?? '—').padEnd(12)
+                : '—'.padEnd(12);
+            const trials = entry.trialCount.toString().padEnd(8);
+            const duration = formatDuration(entry.durationMs);
+
+            console.log(`${id}${question}${status}${metricValue}${trials}${duration}`);
+          }
+          console.log('');
         }
-        console.log('');
+        return;
       }
-      return;
+
+      const ledgerPath = options.ledgerPath
+        ? resolve(projectDir, options.ledgerPath)
+        : join(projectDir, 'experiments.jsonl');
+
+      if (!existsSync(ledgerPath)) {
+        console.log('No experiments found. Run `aesop run \"<hypothesis>\"` to start.');
+        return;
+      }
+
+      const ledger = new LedgerManager({ ledgerPath });
+      const entries = ledger.readAll();
+
+      if (options.json) {
+        printStatusJson(entries);
+      } else {
+        printStatusTable(entries);
+      }
     }
-
-    const ledgerPath = options.ledgerPath
-      ? resolve(projectDir, options.ledgerPath)
-      : join(projectDir, 'experiments.jsonl');
-
-    if (!existsSync(ledgerPath)) {
-      console.log('No experiments found. Run `aesop run \"<hypothesis>\"` to start.');
-      return;
-    }
-
-    const ledger = new LedgerManager({ ledgerPath });
-    const entries = ledger.readAll();
-
-    if (options.json) {
-      printStatusJson(entries);
-    } else {
-      printStatusTable(entries);
-    }
-  });
+  );
 
 // ============================================================================
 // TRACE COMMAND GROUP
@@ -547,7 +572,7 @@ const trace = program.command('trace').description('Inspect experiment traces');
  */
 function toDirName(branchName: string): string {
   // Replace slashes with the encoding used by createExperimentTracer
-  return branchName.replace(/\\//g, '__').replace(/[^a-zA-Z0-9_.-]/g, '-');
+  return branchName.replace(/\\/ / g, '__').replace(/[^a-zA-Z0-9_.-]/g, '-');
 }
 
 /**

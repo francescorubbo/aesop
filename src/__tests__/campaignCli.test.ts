@@ -18,9 +18,9 @@ describe('Aesop Campaign CLI Integration', () => {
   });
 
   async function runAesop(args: string[]) {
-    return execa('node', ['--import', 'tsx', join(process.cwd(), 'src/cli.ts'), ...args], { 
+    return execa('node', ['--import', 'tsx', join(process.cwd(), 'src/cli.ts'), ...args], {
       cwd: process.cwd(),
-      env: { ...process.env, NODE_OPTIONS: '--no-warnings' }
+      env: { ...process.env, NODE_OPTIONS: '--no-warnings' },
     });
   }
 
@@ -37,7 +37,7 @@ describe('Aesop Campaign CLI Integration', () => {
       expect.fail('Should have thrown an error');
     } catch (error: any) {
       expect(error.exitCode).toBe(1);
-      expect(error.stderr).toContain('error: missing required argument \'question\'');
+      expect(error.stderr).toContain("error: missing required argument 'question'");
     }
   });
 });
