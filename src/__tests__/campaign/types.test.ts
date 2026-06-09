@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { TrialEntrySchema, CampaignEntrySchema, CampaignSummarySchema } from '../../campaign/types';
+import {
+  TrialEntrySchema,
+  CampaignEntrySchema,
+  CampaignSummarySchema,
+  PhaseResultSchema,
+  PhasePlanSchema,
+  CampaignPlanSchema,
+} from '../../campaign/types';
 
 describe('campaign/types.ts schemas', () => {
   const validUuid = '550e8400-e29b-41d4-a716-446655440000';
@@ -113,6 +120,23 @@ describe('campaign/types.ts schemas', () => {
       expect(CampaignEntrySchema.parse(validCampaign)).toEqual(validCampaign);
     });
 
+    it('should parse a CampaignEntry with plan and phaseResults', () => {
+      const fullCampaign = {
+        ...validCampaign,
+        plan: {
+          phases: [
+            { kind: 'scaffold', instructions: 'Setup' },
+            { kind: 'baseline', config: { lr: 0.01 } },
+          ],
+        },
+        phaseResults: [
+          { kind: 'scaffold', status: 'completed', output: 'OK' },
+          { kind: 'baseline', status: 'completed', metrics: { acc: 0.8 } },
+        ],
+      };
+      expect(CampaignEntrySchema.parse(fullCampaign)).toEqual(fullCampaign);
+    });
+
     it('should allow nullable bestTrialId, bestMetrics, and summary', () => {
       const minimal = {
         ...validCampaign,
@@ -126,6 +150,77 @@ describe('campaign/types.ts schemas', () => {
     it('should reject invalid status', () => {
       const invalid = { ...validCampaign, status: 'unknown' };
       expect(() => CampaignEntrySchema.parse(invalid)).toThrow();
+    });
+  });
+
+  describe('PhaseResultSchema', () => {
+    it('should parse ScaffoldResult', () => {
+      const res = { kind: 'scaffold', status: 'completed', output: 'ok' };
+      expect(PhaseResultSchema.parse(res)).toEqual(res);
+    });
+
+    it('should parse BaselineResult', () => {
+      const res = { kind: 'baseline', status: 'completed', metrics: { acc: 0.1 } };
+      expect(PhaseResultSchema.parse(res)).toEqual(res);
+    });
+
+    it('should parse SearchResult', () => {
+      const res = {
+        kind: 'search',
+        status: 'completed',
+        bestMetrics: { acc: 0.2 },
+        bestConfig: 'cfg',
+      };
+      expect(PhaseResultSchema.parse(res)).toEqual(res);
+    });
+
+    it('should parse LongRunResult', () => {
+      const res = { kind: 'long_run', status: 'completed', metrics: { acc: 0.3 } };
+      expect(PhaseResultSchema.parse(res)).toEqual(res);
+    });
+
+    it('should reject invalid status', () => {
+      const res = { kind: 'scaffold', status: 'invalid' };
+      expect(() => PhaseResultSchema.parse(res)).toThrow();
+    });
+  });
+
+  describe('PhasePlanSchema', () => {
+    it('should parse ScaffoldPlan', () => {
+      const plan = { kind: 'scaffold', instructions: 'do this' };
+      expect(PhasePlanSchema.parse(plan)).toEqual(plan);
+    });
+
+    it('should parse BaselinePlan', () => {
+      const plan = { kind: 'baseline', config: { a: 1 } };
+      expect(PhasePlanSchema.parse(plan)).toEqual(plan);
+    });
+
+    it('should parse SearchPlan', () => {
+      const plan = { kind: 'search', space: { a: [1, 2] }, iterations: 10 };
+      expect(PhasePlanSchema.parse(plan)).toEqual(plan);
+    });
+
+    it('should parse LongRunPlan', () => {
+      const plan = { kind: 'long_run', config: { a: 1 } };
+      expect(PhasePlanSchema.parse(plan)).toEqual(plan);
+    });
+
+    it('should reject invalid iterations in SearchPlan', () => {
+      const plan = { kind: 'search', space: {}, iterations: 0 };
+      expect(() => PhasePlanSchema.parse(plan)).toThrow();
+    });
+  });
+
+  describe('CampaignPlanSchema', () => {
+    it('should parse a valid CampaignPlan', () => {
+      const plan = {
+        phases: [
+          { kind: 'scaffold', instructions: '...' },
+          { kind: 'baseline', config: {} },
+        ],
+      };
+      expect(CampaignPlanSchema.parse(plan)).toEqual(plan);
     });
   });
 });
