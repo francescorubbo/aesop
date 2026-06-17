@@ -202,7 +202,7 @@ describe('campaign/types.ts schemas', () => {
     });
 
     it('should parse LongRunPlan', () => {
-      const plan = { kind: 'long_run', config: { a: 1 } };
+      const plan = { kind: 'long_run', bestArgs: { '--lr': '0.001' }, epochs: 100 };
       expect(PhasePlanSchema.parse(plan)).toEqual(plan);
     });
 
