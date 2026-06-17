@@ -43,6 +43,88 @@ export const CampaignSummarySchema = z.object({
 });
 export type CampaignSummary = z.infer<typeof CampaignSummarySchema>;
 
+// ── Phase ──────────────────────────────────────────────────────────────────
+
+export const PhaseStatusSchema = z.enum(['pending', 'running', 'completed', 'failed', 'skipped']);
+export type PhaseStatus = z.infer<typeof PhaseStatusSchema>;
+
+export const PhaseKindSchema = z.enum(['scaffold', 'baseline', 'search', 'long_run']);
+export type PhaseKind = z.infer<typeof PhaseKindSchema>;
+
+export const ScaffoldResultSchema = z.object({
+  kind: z.literal('scaffold'),
+  status: PhaseStatusSchema,
+  output: z.string().optional(),
+  error: z.string().optional(),
+});
+
+export const BaselineResultSchema = z.object({
+  kind: z.literal('baseline'),
+  status: PhaseStatusSchema,
+  metrics: z.record(z.string(), z.number()).optional(),
+  output: z.string().optional(),
+  error: z.string().optional(),
+});
+
+export const SearchResultSchema = z.object({
+  kind: z.literal('search'),
+  status: PhaseStatusSchema,
+  bestMetrics: z.record(z.string(), z.number()).optional(),
+  bestConfig: z.string().optional(),
+  output: z.string().optional(),
+  error: z.string().optional(),
+});
+
+export const LongRunResultSchema = z.object({
+  kind: z.literal('long_run'),
+  status: PhaseStatusSchema,
+  metrics: z.record(z.string(), z.number()).optional(),
+  output: z.string().optional(),
+  error: z.string().optional(),
+});
+
+export const PhaseResultSchema = z.discriminatedUnion('kind', [
+  ScaffoldResultSchema,
+  BaselineResultSchema,
+  SearchResultSchema,
+  LongRunResultSchema,
+]);
+export type PhaseResult = z.infer<typeof PhaseResultSchema>;
+
+export const ScaffoldPlanSchema = z.object({
+  kind: z.literal('scaffold'),
+  instructions: z.string(),
+});
+
+export const BaselinePlanSchema = z.object({
+  kind: z.literal('baseline'),
+  config: z.record(z.string(), z.any()),
+});
+
+export const SearchPlanSchema = z.object({
+  kind: z.literal('search'),
+  space: z.record(z.string(), z.any()),
+  iterations: z.number().int().positive(),
+});
+
+export const LongRunPlanSchema = z.object({
+  kind: z.literal('long_run'),
+  config: z.record(z.string(), z.any()),
+});
+
+export const PhasePlanSchema = z.discriminatedUnion('kind', [
+  ScaffoldPlanSchema,
+  BaselinePlanSchema,
+  SearchPlanSchema,
+  LongRunPlanSchema,
+]);
+export type PhasePlan = z.infer<typeof PhasePlanSchema>;
+
+export const CampaignPlanSchema = z.object({
+  phases: z.array(PhasePlanSchema),
+});
+export type CampaignPlan = z.infer<typeof CampaignPlanSchema>;
+
 // ── Campaign ─────────────────────────────────────────────────────────────────
 
 export const CampaignStatusSchema = z.enum(['completed', 'failed', 'budget_exhausted']);
@@ -60,6 +142,8 @@ export const CampaignEntrySchema = z.object({
   bestMetrics: z.record(z.string(), z.number()).nullable(),
   summary: CampaignSummarySchema.nullable(),
   durationMs: z.number().int().nonnegative(),
+  plan: CampaignPlanSchema.optional(),
+  phaseResults: z.array(PhaseResultSchema).optional(),
 });
 export type CampaignEntry = z.infer<typeof CampaignEntrySchema>;
 
