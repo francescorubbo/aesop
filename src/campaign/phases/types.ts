@@ -1,5 +1,3 @@
-import { runWithValidation, type ValidationResult } from '../../validateContract.js';
-
 /**
  * Context object passed to phase executors, containing the necessary
  * runtime information for executing a validation trial.
@@ -15,11 +13,15 @@ export interface PhaseContext {
 
 /**
  * Generic interface for phase executors.
- * A phase executor is a function that takes a phase context and arguments,
- * and returns a validation result.
+ *
+ * A phase executor takes a phase plan and context, executes the phase,
+ * and returns a phase-specific result.
+ *
+ * @typeParam TPlan - The plan type for this phase (e.g., BaselinePlan)
+ * @typeParam TResult - The result type for this phase (e.g., BaselineResult)
  */
-export interface PhaseExecutor<TArgs extends Record<string, string> = Record<string, string>> {
-  (_ctx: PhaseContext, _args: TArgs): Promise<ValidationResult>;
+export interface PhaseExecutor<TPlan, TResult> {
+  execute(_plan: TPlan, _ctx: PhaseContext): Promise<TResult>;
 }
 
 /**
@@ -33,13 +35,4 @@ export interface PhaseExecutor<TArgs extends Record<string, string> = Record<str
  * @param args - Map of flag names to values to append to the validation command
  * @returns Promise resolving to validation result
  */
-export async function runProgrammaticTrial(
-  ctx: PhaseContext,
-  args: Record<string, string>
-): Promise<ValidationResult> {
-  const argString = Object.entries(args)
-    .map(([flag, value]) => `${flag} ${value}`)
-    .join(' ');
-  const cmd = `${ctx.validateCmd} ${argString}`.trim();
-  return runWithValidation(ctx.workspacePath, cmd, ctx.metricKey);
-}
+export { runProgrammaticTrial } from './baselinePhase.js';
