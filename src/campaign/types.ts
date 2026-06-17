@@ -64,7 +64,9 @@ export const BaselineResultSchema = z.object({
   metrics: z.record(z.string(), z.number()).optional(),
   output: z.string().optional(),
   error: z.string().optional(),
+  durationMs: z.number().int().nonnegative().optional(),
 });
+export type BaselineResult = z.infer<typeof BaselineResultSchema>;
 
 export const SearchResultSchema = z.object({
   kind: z.literal('search'),
@@ -100,6 +102,7 @@ export const BaselinePlanSchema = z.object({
   kind: z.literal('baseline'),
   config: z.record(z.string(), z.any()),
 });
+export type BaselinePlan = z.infer<typeof BaselinePlanSchema>;
 
 export const SearchPlanSchema = z.object({
   kind: z.literal('search'),
