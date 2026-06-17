@@ -83,7 +83,9 @@ export const LongRunResultSchema = z.object({
   metrics: z.record(z.string(), z.number()).optional(),
   output: z.string().optional(),
   error: z.string().optional(),
+  durationMs: z.number().int().nonnegative().optional(),
 });
+export type LongRunResult = z.infer<typeof LongRunResultSchema>;
 
 export const PhaseResultSchema = z.discriminatedUnion('kind', [
   ScaffoldResultSchema,
@@ -112,8 +114,10 @@ export const SearchPlanSchema = z.object({
 
 export const LongRunPlanSchema = z.object({
   kind: z.literal('long_run'),
-  config: z.record(z.string(), z.any()),
+  bestArgs: z.record(z.string(), z.string()),
+  epochs: z.number().int().positive(),
 });
+export type LongRunPlan = z.infer<typeof LongRunPlanSchema>;
 
 export const PhasePlanSchema = z.discriminatedUnion('kind', [
   ScaffoldPlanSchema,
