@@ -168,8 +168,11 @@ describe('campaign/types.ts schemas', () => {
       const res = {
         kind: 'search',
         status: 'completed',
+        trialCount: 1,
+        bestTrialId: validUuid,
         bestMetrics: { acc: 0.2 },
-        bestConfig: 'cfg',
+        bestConfiguration: 'cfg',
+        rankedConfigs: [{ trialId: validUuid, configuration: 'cfg', metrics: { acc: 0.2 } }],
       };
       expect(PhaseResultSchema.parse(res)).toEqual(res);
     });
@@ -197,7 +200,12 @@ describe('campaign/types.ts schemas', () => {
     });
 
     it('should parse SearchPlan', () => {
-      const plan = { kind: 'search', space: { a: [1, 2] }, iterations: 10 };
+      const plan = {
+        kind: 'search',
+        strategy: 'grid',
+        searchSpace: { a: ['1', '2'] },
+        maxTrials: 10,
+      };
       expect(PhasePlanSchema.parse(plan)).toEqual(plan);
     });
 
