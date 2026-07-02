@@ -71,11 +71,22 @@ export type BaselineResult = z.infer<typeof BaselineResultSchema>;
 export const SearchResultSchema = z.object({
   kind: z.literal('search'),
   status: PhaseStatusSchema,
-  bestMetrics: z.record(z.string(), z.number()).optional(),
-  bestConfig: z.string().optional(),
+  trialCount: z.number().int().nonnegative(),
+  bestTrialId: z.string().uuid().nullable(),
+  bestMetrics: z.record(z.string(), z.number()).nullable(),
+  bestConfiguration: z.string().nullable(),
+  rankedConfigs: z.array(
+    z.object({
+      trialId: z.string().uuid(),
+      configuration: z.string(),
+      metrics: z.record(z.string(), z.number()),
+    })
+  ),
+  durationMs: z.number().int().nonnegative().optional(),
   output: z.string().optional(),
   error: z.string().optional(),
 });
+export type SearchResult = z.infer<typeof SearchResultSchema>;
 
 export const LongRunResultSchema = z.object({
   kind: z.literal('long_run'),
@@ -108,9 +119,11 @@ export type BaselinePlan = z.infer<typeof BaselinePlanSchema>;
 
 export const SearchPlanSchema = z.object({
   kind: z.literal('search'),
-  space: z.record(z.string(), z.any()),
-  iterations: z.number().int().positive(),
+  strategy: z.enum(['grid', 'random', 'agent_guided']),
+  searchSpace: z.record(z.string(), z.array(z.string())),
+  maxTrials: z.number().int().positive().optional(),
 });
+export type SearchPlan = z.infer<typeof SearchPlanSchema>;
 
 export const LongRunPlanSchema = z.object({
   kind: z.literal('long_run'),

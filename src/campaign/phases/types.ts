@@ -9,6 +9,8 @@ export interface PhaseContext {
   validateCmd: string;
   /** Key of the primary metric (default: 'accuracy') */
   metricKey?: string;
+  /** Whether the primary metric should be maximized */
+  maximize?: boolean;
 }
 
 /**
