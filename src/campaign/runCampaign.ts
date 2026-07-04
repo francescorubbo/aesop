@@ -140,7 +140,10 @@ export async function runCampaign(options: RunCampaignOptions): Promise<RunCampa
     campaignState.bestTrialIdFromAgent = args.bestTrialId;
   };
 
-  const onRunTrial = async (hypothesis: string) => {
+  const onRunTrial = async (args: Record<string, string>) => {
+    const hypothesis = Object.entries(args)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(', ');
     log(`Running trial: ${hypothesis}`);
     try {
       const result = await runTrial({

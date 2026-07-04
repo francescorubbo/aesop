@@ -30,15 +30,15 @@ Current baseline: ${baseline}
 Optimization Goal: ${direction} (Better means ${goal}).
 
 You have two tools:
-1. run_trial(hypothesis: string): Runs a single experiment with the given hypothesis. 
-   The hypothesis should be specific and actionable (e.g., "Change learning rate from 0.01 to 0.001 in config.yaml").
+1. run_trial(args: Record<string, string>): Runs a single experiment with the given parameter configurations. 
+   The args object should contain the parameter names and their values (e.g., { "learning_rate": "0.001", "batch_size": "32" }).
    It returns the trial ID, the metrics observed, and whether it succeeded.
 
 2. complete_campaign(args: CompleteCampaignArgs): Call this when you have found a satisfactory optimum or have enough evidence to make a definitive recommendation.
 
 Strategy:
 - Do not just look for the first improvement. Explore the parameter space to understand the trend.
-- Be precise in your hypotheses.
+- Be precise in your configurations.
 - Once you believe you've reached the optimum or the budget is exhausted, summarize your findings using complete_campaign.
 
 Always analyze the results of the previous trial before proposing the next one.`;
@@ -70,7 +70,7 @@ Either call run_trial with a new hypothesis to further explore/optimize, or call
 }
 
 export function createCampaignToolsExtension(
-  onRunTrial: (_hypothesis: string) => Promise<{
+  onRunTrial: (_args: Record<string, string>) => Promise<{
     trialId: string;
     metrics: Record<string, number> | null;
     status: string;
@@ -82,20 +82,21 @@ export function createCampaignToolsExtension(
     pi.registerTool({
       name: 'run_trial',
       label: 'Run Trial',
-      description: 'Run a single experiment trial with a specific hypothesis.',
+      description: 'Run a single experiment trial with specific parameter configurations.',
       parameters: {
         type: 'object',
         properties: {
-          hypothesis: {
-            type: 'string',
-            description: 'The specific change to implement and test.',
+          args: {
+            type: 'object',
+            additionalProperties: { type: 'string' },
+            description: 'The parameter configurations to test.',
           },
         },
-        required: ['hypothesis'],
+        required: ['args'],
       },
       execute: async (_toolCallId, params) => {
-        const hypothesis = (params as { hypothesis: string }).hypothesis;
-        const result = await onRunTrial(hypothesis);
+        const { args: trialArgs } = params as { args: Record<string, string> };
+        const result = await onRunTrial(trialArgs);
         return { content: [{ type: 'text', text: JSON.stringify(result) }], details: {} };
       },
     });

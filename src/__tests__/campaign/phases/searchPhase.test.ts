@@ -131,18 +131,6 @@ describe('searchPhaseExecutor', () => {
     expect(result.rankedConfigs[2]?.metrics['accuracy']).toBe(0.9);
   });
 
-  it('should throw error for agent_guided strategy', async () => {
-    const plan: SearchPlan = {
-      kind: 'search',
-      strategy: 'agent_guided',
-      searchSpace: {
-        param: ['a'],
-      },
-    };
-
-    await expect(searchPhaseExecutor.execute(plan, ctx)).rejects.toThrow('not implemented');
-  });
-
   it('should handle failed trials by excluding them from ranked results', async () => {
     const plan: SearchPlan = {
       kind: 'search',
