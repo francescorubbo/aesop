@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 
 import { CampaignLedger } from './campaignLedger.js';
 import { checkCampaignRatchet } from './campaignRatchet.js';
-import { WorkspaceManager } from '../workspaceManager.js';
+import { WorkspaceManager, type Workspace } from '../workspaceManager.js';
 import { baselinePhaseExecutor as baselineExecutor } from './phases/baselinePhase.js';
 import { searchPhaseExecutor as searchExecutor } from './phases/searchPhase.js';
 import {
@@ -75,7 +75,7 @@ export async function runCampaign(options: RunCampaignOptions): Promise<RunCampa
   // STEP 2: Workspace Setup
   // =====================================================================
   const workspaceManager = new WorkspaceManager(resolvedProjectDir);
-  let campaignWorkspace: any = null; // eslint-disable-line @typescript-eslint/no-explicit-any
+  let campaignWorkspace: Workspace | null = null;
 
   try {
     log('Creating campaign workspace...');
